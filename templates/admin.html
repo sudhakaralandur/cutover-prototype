@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cutover Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,sans-serif;font-size:12px;background:#f0f2f5;color:#1a1a2e;display:flex;flex-direction:column;height:100vh;overflow:hidden}
+
+/* ── TOP BAR ── */
+.topbar{background:#1a1a2e;color:#fff;padding:0 16px;height:42px;display:flex;align-items:center;gap:16px;flex-shrink:0}
+.topbar .logo{font-size:14px;font-weight:700;letter-spacing:.5px}
+.topbar .sub{font-size:11px;color:#8899bb}
+.topbar a{color:#7aadff;font-size:11px;text-decoration:none;margin-left:auto}
+.topbar a:hover{color:#fff}
+
+/* ── BODY LAYOUT ── */
+.body{display:flex;flex:1;overflow:hidden}
+
+/* ── SIDEBAR ── */
+.sidebar{width:210px;background:#fff;border-right:1px solid #dde1ea;display:flex;flex-direction:column;flex-shrink:0}
+.sidebar-title{padding:12px 14px 8px;font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid #eee}
+.step-item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-left:3px solid transparent;transition:background .1s}
+.step-item:hover{background:#f4f6fb}
+.step-item.active{background:#eef2ff;border-left-color:#2255aa}
+.step-num{width:22px;height:22px;border-radius:50%;background:#e8eaf5;color:#446;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.step-item.active .step-num{background:#2255aa;color:#fff}
+.step-item.done .step-num{background:#27ae60;color:#fff}
+.step-label{font-size:12px;color:#334}
+.step-item.active .step-label{font-weight:600;color:#1a1a2e}
+.step-sub{font-size:10px;color:#999;margin-top:1px}
+
+/* ── MAIN CONTENT ── */
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+
+/* ── STEP HEADER ── */
+.step-header{padding:14px 20px 10px;border-bottom:1px solid #dde1ea;background:#fff;flex-shrink:0}
+.step-header h2{font-size:16px;font-weight:700;color:#1a1a2e}
+.step-header p{font-size:11px;color:#666;margin-top:3px}
+.step-nav{display:flex;gap:8px;margin-top:10px}
+
+/* ── PROJECT SELECTOR BAR ── */
+.proj-bar{background:#f7f8fc;border-bottom:1px solid #e4e7ef;padding:7px 20px;display:flex;align-items:center;gap:10px;flex-shrink:0}
+.proj-bar label{font-size:11px;color:#555}
+.proj-bar select{font-size:11px;padding:3px 8px;border:1px solid #ccd;border-radius:3px;background:#fff}
+
+/* ── CONTENT AREA ── */
+.content{flex:1;overflow-y:auto;padding:16px 20px}
+
+/* ── CARD ── */
+.card{background:#fff;border:1px solid #dde1ea;border-radius:5px;margin-bottom:16px}
+.card-header{padding:10px 14px;border-bottom:1px solid #eee;display:flex;align-items:center;justify-content:space-between}
+.card-header h3{font-size:13px;font-weight:600;color:#1a1a2e}
+.card-body{padding:14px}
+
+/* ── BUTTONS ── */
+.btn{font-size:11px;padding:4px 12px;border:1px solid #bbb;border-radius:3px;background:#f4f5f8;cursor:pointer;color:#333;white-space:nowrap}
+.btn:hover{background:#e4e8f0}
+.btn.primary{background:#2255aa;color:#fff;border-color:#1a4499}
+.btn.primary:hover{background:#1a4499}
+.btn.danger{background:#e74c3c;color:#fff;border-color:#c0392b}
+.btn.danger:hover{background:#c0392b}
+.btn.success{background:#27ae60;color:#fff;border-color:#1e8449}
+.btn.success:hover{background:#1e8449}
+.btn.sm{padding:2px 8px;font-size:10.5px}
+
+/* ── GRID TABLE ── */
+.grid{width:100%;border-collapse:collapse}
+.grid th{background:#f0f2f8;padding:7px 8px;text-align:left;font-size:11px;font-weight:600;color:#445;border-bottom:2px solid #dde1ea;white-space:nowrap}
+.grid td{padding:6px 8px;font-size:11.5px;border-bottom:1px solid #eee;vertical-align:middle}
+.grid tr:hover td{background:#f4f7ff}
+.grid tr.editing td{background:#fffde7}
+.actions{display:flex;gap:4px}
+
+/* ── INLINE FORM ── */
+.grid td input,.grid td select,.grid td textarea{
+  width:100%;font-size:11.5px;padding:3px 6px;
+  border:1px solid #aac;border-radius:3px;background:#fff;
+  font-family:inherit;
+}
+.grid td textarea{resize:vertical;min-height:36px}
+
+/* ── FORM MODAL ── */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:500;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:6px;width:520px;max-width:95vw;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,.2)}
+.modal-hdr{background:#1a1a2e;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-radius:6px 6px 0 0}
+.modal-hdr h3{font-size:13px;font-weight:600}
+.modal-close{cursor:pointer;font-size:18px;color:#8899bb}
+.modal-close:hover{color:#fff}
+.modal-body{padding:16px}
+.modal-footer{padding:10px 16px;border-top:1px solid #eee;display:flex;justify-content:flex-end;gap:8px}
+
+/* ── FORM FIELDS ── */
+.form-row{margin-bottom:12px}
+.form-row label{display:block;font-size:11px;font-weight:600;color:#555;margin-bottom:3px}
+.form-row input,.form-row select,.form-row textarea{
+  width:100%;font-size:12px;padding:5px 8px;
+  border:1px solid #ccd;border-radius:3px;font-family:inherit;
+}
+.form-row textarea{resize:vertical;min-height:60px}
+.form-row .hint{font-size:10px;color:#999;margin-top:2px}
+.form-row.half{display:inline-block;width:48%;margin-right:2%}
+.form-check{display:flex;align-items:center;gap:6px}
+.form-check input{width:auto}
+
+/* ── BADGE ── */
+.badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700}
+.badge-yes{background:#d4f0e8;color:#0d6e3f}
+.badge-no{background:#fde8e8;color:#a00}
+
+/* ── TOAST ── */
+.toast{position:fixed;bottom:20px;right:20px;background:#1a1a2e;color:#fff;padding:10px 18px;border-radius:5px;font-size:12px;z-index:999;opacity:0;transition:opacity .3s;pointer-events:none}
+.toast.show{opacity:1}
+.toast.err{background:#c0392b}
+
+/* ── EMPTY ── */
+.empty-msg{text-align:center;padding:40px;color:#999;font-size:13px}
+
+/* ── STEP NAV BUTTONS ── */
+.nav-prev{background:#f4f5f8;color:#333;border-color:#bbb}
+.nav-next{background:#2255aa;color:#fff;border-color:#1a4499}
+.nav-next:hover{background:#1a4499}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <span class="logo">⚙ Cutover Admin</span>
+  <span class="sub">Setup &amp; Configuration</span>
+  <a href="/">← Back to Viewer</a>
+</div>
+
+<div class="body">
+<!-- SIDEBAR -->
+<div class="sidebar">
+  <div class="sidebar-title">Setup Flow</div>
+  <div class="step-item active" onclick="goStep(1)" id="sideStep1">
+    <div class="step-num">1</div>
+    <div><div class="step-label">Work Calendar</div><div class="step-sub">Shift templates</div></div>
+  </div>
+  <div class="step-item" onclick="goStep(2)" id="sideStep2">
+    <div class="step-num">2</div>
+    <div><div class="step-label">Project Info</div><div class="step-sub">Create project</div></div>
+  </div>
+  <div class="step-item" onclick="goStep(3)" id="sideStep3">
+    <div class="step-num">3</div>
+    <div><div class="step-label">Project Users</div><div class="step-sub">Authorized users</div></div>
+  </div>
+  <div class="step-item" onclick="goStep(4)" id="sideStep4">
+    <div class="step-num">4</div>
+    <div><div class="step-label">Resources</div><div class="step-sub">Team members</div></div>
+  </div>
+  <div class="step-item" onclick="goStep(5)" id="sideStep5">
+    <div class="step-num">5</div>
+    <div><div class="step-label">Resource Calendar</div><div class="step-sub">Work schedules</div></div>
+  </div>
+  <div class="step-item" onclick="goStep(6)" id="sideStep6">
+    <div class="step-num">6</div>
+    <div><div class="step-label">Holidays</div><div class="step-sub">Blackout dates</div></div>
+  </div>
+  <div class="step-item" onclick="goStep(7)" id="sideStep7">
+    <div class="step-num">7</div>
+    <div><div class="step-label">Tasks</div><div class="step-sub">Cutover plan</div></div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- STEP HEADER -->
+  <div class="step-header">
+    <h2 id="stepTitle">Step 1 — Work Calendar</h2>
+    <p id="stepDesc">Define reusable shift templates. These are referenced when assigning resource schedules.</p>
+    <div class="step-nav">
+      <button class="btn nav-prev" id="btnPrev" onclick="goStep(curStep-1)" style="display:none">← Previous</button>
+      <button class="btn nav-next" id="btnNext" onclick="goStep(curStep+1)">Next: Project Info →</button>
+    </div>
+  </div>
+
+  <!-- PROJECT SELECTOR (shown for steps 3,4) -->
+  <div class="proj-bar" id="projBar" style="display:none">
+    <label>Project Context:</label>
+    <select id="ctxProject" onchange="onCtxChange()">
+      <option value="">— select project —</option>
+    </select>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content" id="stepContent">
+    <!-- dynamically filled -->
+  </div>
+
+</div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-hdr">
+      <h3 id="modalTitle">Add Record</h3>
+      <span class="modal-close" onclick="closeModal()">✕</span>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn primary" onclick="modalSave()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──
+let curStep   = 1;
+let ctxClient = '', ctxProject = '', ctxRelease = '';
+let modalSaveFn = null;
+let wcCodes = [];
+
+const STEPS = {
+  1: { title:'Step 1 — Work Calendar',     desc:'Define reusable shift templates. Referenced when assigning resource schedules.', next:'Project Info' },
+  2: { title:'Step 2 — Project Info',      desc:'Create or update your cutover project.',                                          next:'Project Users' },
+  3: { title:'Step 3 — Project Users',     desc:'Add authorized users for the selected project.',                                  next:'Resources' },
+  4: { title:'Step 4 — Resources',         desc:'Add team members to the selected project.',                                       next:'Resource Calendar' },
+  5: { title:'Step 5 — Resource Calendar', desc:'Assign work schedules to resources. Schedules are global across projects.',       next:'Holidays' },
+  6: { title:'Step 6 — Holidays',          desc:'Define blackout/holiday dates. Global across all projects.',                      next:'Tasks' },
+  7: { title:'Step 7 — Tasks',             desc:'Manage the cutover task plan.',                                                   next:null },
+};
+
+// ── NAVIGATION ──
+function goStep(n) {
+  if (n < 1 || n > 7) return;
+  curStep = n;
+  document.querySelectorAll('.step-item').forEach((el,i) => {
+    el.classList.toggle('active', i+1 === n);
+  });
+  const s = STEPS[n];
+  document.getElementById('stepTitle').textContent = s.title;
+  document.getElementById('stepDesc').textContent  = s.desc;
+  document.getElementById('btnPrev').style.display = n > 1 ? '' : 'none';
+  const btnNext = document.getElementById('btnNext');
+  if (s.next) { btnNext.textContent = `Next: ${s.next} →`; btnNext.style.display = ''; }
+  else          { btnNext.style.display = 'none'; }
+
+  // Show project bar for steps 3 & 4
+  document.getElementById('projBar').style.display = (n === 3 || n === 4) ? '' : 'none';
+
+  loadStep(n);
+}
+
+function loadStep(n) {
+  const c = document.getElementById('stepContent');
+  c.innerHTML = '<div class="empty-msg">Loading...</div>';
+  switch(n) {
+    case 1: renderWorkCalendar(); break;
+    case 2: renderProjects();     break;
+    case 3: renderProjectUsers(); break;
+    case 4: renderResources();    break;
+    case 5: renderResCalendar();  break;
+    case 6: renderHolidays();     break;
+    case 7: renderTasksPlaceholder(); break;
+  }
+}
+
+// ── CONTEXT PROJECT CHANGE ──
+function onCtxChange() {
+  const val = document.getElementById('ctxProject').value;
+  [ctxClient, ctxProject, ctxRelease] = val ? val.split('|') : ['','',''];
+  loadStep(curStep);
+}
+
+async function loadCtxProjects() {
+  const data = await api('/admin/api/projlist');
+  const sel  = document.getElementById('ctxProject');
+  const cur  = sel.value;
+  sel.innerHTML = '<option value="">— select project —</option>';
+  data.forEach(p => {
+    const o = document.createElement('option');
+    o.value = `${p.Client}|${p.ProjectName}|${p.Release}`;
+    o.textContent = `${p.ProjectName} — ${p.Release}`;
+    if (o.value === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+  if (!cur && data.length) {
+    sel.value = `${data[0].Client}|${data[0].ProjectName}|${data[0].Release}`;
+    onCtxChange();
+  }
+}
+
+// ── STEP 1: WORK CALENDAR ──
+async function renderWorkCalendar() {
+  wcCodes = await api('/admin/api/workcalendar');
+  const c = document.getElementById('stepContent');
+  c.innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <h3>Shift Templates (${wcCodes.length})</h3>
+      <button class="btn primary sm" onclick="openWCModal()">+ Add Template</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="grid" id="wcGrid">
+        <thead><tr>
+          <th>Code</th><th>Description</th><th>Shift Start</th><th>Shift End</th>
+          <th>Work Days</th><th>Timezone</th><th>24x7</th><th>Actions</th>
+        </tr></thead>
+        <tbody>
+          ${wcCodes.length ? wcCodes.map(r => `
+          <tr>
+            <td><strong>${h(r.WorkingHrsCode)}</strong></td>
+            <td>${h(r.Description||'')}</td>
+            <td>${h(r.ShiftStart||'')}</td>
+            <td>${h(r.ShiftEnd||'')}</td>
+            <td>${h(r.WorkDays||'')}</td>
+            <td>${h(r.Timezone||'')}</td>
+            <td><span class="badge ${r.Is24x7?'badge-yes':'badge-no'}">${r.Is24x7?'Yes':'No'}</span></td>
+            <td><div class="actions">
+              <button class="btn sm" onclick='openWCModal(${JSON.stringify(r)})'>Edit</button>
+              <button class="btn sm danger" onclick="deleteWC('${r.WorkingHrsCode}')">Del</button>
+            </div></td>
+          </tr>`).join('') : '<tr><td colspan="8" class="empty-msg">No templates yet.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function openWCModal(rec) {
+  rec = rec || {};
+  const isEdit = !!rec.WorkingHrsCode;
+  document.getElementById('modalTitle').textContent = isEdit ? 'Edit Shift Template' : 'Add Shift Template';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row">
+      <label>Code *</label>
+      <input id="f_code" value="${h(rec.WorkingHrsCode||'')}" ${isEdit?'readonly':''} placeholder="e.g. EST_8AM_5PM">
+      <div class="hint">Short identifier, no spaces</div>
+    </div>
+    <div class="form-row"><label>Description</label><input id="f_desc" value="${h(rec.Description||'')}"></div>
+    <div class="form-row half"><label>Shift Start (HH:MM)</label><input id="f_start" value="${h(rec.ShiftStart||'')}" placeholder="08:00"></div>
+    <div class="form-row half"><label>Shift End (HH:MM)</label><input id="f_end" value="${h(rec.ShiftEnd||'')}" placeholder="17:00"></div>
+    <div class="form-row">
+      <label>Work Days</label>
+      <input id="f_days" value="${h(rec.WorkDays||'')}" placeholder="MON,TUE,WED,THU,FRI  or  ALL">
+    </div>
+    <div class="form-row"><label>Timezone</label>
+      <select id="f_tz">
+        ${tzOptions(rec.Timezone)}
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-check">
+        <input type="checkbox" id="f_247" ${rec.Is24x7?'checked':''}>
+        <label for="f_247">24x7 (overrides shift times and work days)</label>
+      </div>
+    </div>`;
+  modalSaveFn = async () => {
+    const d = {
+      WorkingHrsCode: document.getElementById('f_code').value.trim(),
+      Description:    document.getElementById('f_desc').value.trim(),
+      ShiftStart:     document.getElementById('f_start').value.trim(),
+      ShiftEnd:       document.getElementById('f_end').value.trim(),
+      WorkDays:       document.getElementById('f_days').value.trim().toUpperCase(),
+      Timezone:       document.getElementById('f_tz').value,
+      Is24x7:         document.getElementById('f_247').checked ? 1 : 0,
+    };
+    if (!d.WorkingHrsCode) { toast('Code is required', true); return; }
+    await api('/admin/api/workcalendar', 'POST', d);
+    toast('Saved'); closeModal(); renderWorkCalendar();
+  };
+  openModal();
+}
+
+async function deleteWC(code) {
+  if (!confirm(`Delete template "${code}"?`)) return;
+  await api(`/admin/api/workcalendar/${enc(code)}`, 'DELETE');
+  toast('Deleted'); renderWorkCalendar();
+}
+
+// ── STEP 2: PROJECTS ──
+async function renderProjects() {
+  const rows = await api('/admin/api/projects');
+  document.getElementById('stepContent').innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <h3>Projects (${rows.length})</h3>
+      <button class="btn primary sm" onclick="openProjModal()">+ Add Project</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="grid">
+        <thead><tr><th>Client</th><th>Project Name</th><th>Release</th><th>Team</th><th>Cutover Start</th><th>Timezone</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(r => `
+          <tr>
+            <td>${h(r.Client)}</td><td><strong>${h(r.ProjectName)}</strong></td>
+            <td>${h(r.Release)}</td><td>${h(r.TeamName||'')}</td>
+            <td>${h(r.CutoverStartDateTime||'')}</td><td>${h(r.Timezone||'')}</td>
+            <td><div class="actions">
+              <button class="btn sm" onclick='openProjModal(${JSON.stringify(r)})'>Edit</button>
+              <button class="btn sm danger" onclick="deleteProj('${enc(r.Client)}','${enc(r.ProjectName)}','${enc(r.Release)}')">Del</button>
+            </div></td>
+          </tr>`).join('') : '<tr><td colspan="7" class="empty-msg">No projects yet.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function openProjModal(rec) {
+  rec = rec || {};
+  const isEdit = !!(rec.Client && rec.ProjectName && rec.Release);
+  document.getElementById('modalTitle').textContent = isEdit ? 'Edit Project' : 'Add Project';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row half"><label>Client *</label><input id="f_client" value="${h(rec.Client||'')}" ${isEdit?'readonly':''}></div>
+    <div class="form-row half"><label>Project Name *</label><input id="f_projname" value="${h(rec.ProjectName||'')}" ${isEdit?'readonly':''}></div>
+    <div class="form-row half"><label>Release *</label><input id="f_release" value="${h(rec.Release||'')}" ${isEdit?'readonly':''}></div>
+    <div class="form-row half"><label>Team Name</label><input id="f_team" value="${h(rec.TeamName||'')}"></div>
+    <div class="form-row"><label>Cutover Start Date/Time</label><input type="datetime-local" id="f_cstart" value="${rec.CutoverStartDateTime ? rec.CutoverStartDateTime.replace(' ','T').substring(0,16) : ''}"></div>
+    <div class="form-row"><label>Timezone</label><select id="f_tz">${tzOptions(rec.Timezone)}</select></div>`;
+  modalSaveFn = async () => {
+    const d = {
+      Client:               document.getElementById('f_client').value.trim(),
+      ProjectName:          document.getElementById('f_projname').value.trim(),
+      Release:              document.getElementById('f_release').value.trim(),
+      TeamName:             document.getElementById('f_team').value.trim(),
+      CutoverStartDateTime: document.getElementById('f_cstart').value || null,
+      Timezone:             document.getElementById('f_tz').value,
+    };
+    if (!d.Client || !d.ProjectName || !d.Release) { toast('Client, Project, Release are required', true); return; }
+    await api('/admin/api/projects', 'POST', d);
+    toast('Saved'); closeModal(); renderProjects(); loadCtxProjects();
+  };
+  openModal();
+}
+
+async function deleteProj(client, project, release) {
+  if (!confirm('Delete this project? All related tasks and resources will also be deleted.')) return;
+  await api(`/admin/api/projects/${client}/${project}/${release}`, 'DELETE');
+  toast('Deleted'); renderProjects(); loadCtxProjects();
+}
+
+// ── STEP 3: PROJECT USERS ──
+async function renderProjectUsers() {
+  if (!ctxProject) {
+    document.getElementById('stepContent').innerHTML = '<div class="empty-msg">Select a project above to manage users.</div>';
+    return;
+  }
+  const rows = await api(`/admin/api/projectusers?client=${enc(ctxClient)}&project=${enc(ctxProject)}&release=${enc(ctxRelease)}`);
+  document.getElementById('stepContent').innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <h3>Users for ${h(ctxProject)} — ${h(ctxRelease)} (${rows.length})</h3>
+      <button class="btn primary sm" onclick="openUserModal()">+ Add User</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="grid">
+        <thead><tr><th>#</th><th>User Name</th><th>Email</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map((r,i) => `
+          <tr>
+            <td>${i+1}</td>
+            <td><strong>${h(r.UserName)}</strong></td>
+            <td>${h(r.UserEmailID||'')}</td>
+            <td><div class="actions">
+              <button class="btn sm" onclick='openUserModal(${JSON.stringify(r)})'>Edit</button>
+              <button class="btn sm danger" onclick="deleteUser(${r.ID})">Del</button>
+            </div></td>
+          </tr>`).join('') : '<tr><td colspan="4" class="empty-msg">No users yet.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function openUserModal(rec) {
+  rec = rec || {};
+  document.getElementById('modalTitle').textContent = rec.ID ? 'Edit User' : 'Add User';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row"><label>User Name *</label><input id="f_uname" value="${h(rec.UserName||'')}"></div>
+    <div class="form-row"><label>Email</label><input type="email" id="f_uemail" value="${h(rec.UserEmailID||'')}"></div>`;
+  modalSaveFn = async () => {
+    const d = {
+      ID:          rec.ID || null,
+      Client:      ctxClient,
+      ProjectName: ctxProject,
+      Release:     ctxRelease,
+      UserName:    document.getElementById('f_uname').value.trim(),
+      UserEmailID: document.getElementById('f_uemail').value.trim(),
+    };
+    if (!d.UserName) { toast('Name is required', true); return; }
+    await api('/admin/api/projectusers', 'POST', d);
+    toast('Saved'); closeModal(); renderProjectUsers();
+  };
+  openModal();
+}
+
+async function deleteUser(id) {
+  if (!confirm('Remove this user?')) return;
+  await api(`/admin/api/projectusers/${id}`, 'DELETE');
+  toast('Deleted'); renderProjectUsers();
+}
+
+// ── STEP 4: RESOURCES ──
+async function renderResources() {
+  if (!ctxProject) {
+    document.getElementById('stepContent').innerHTML = '<div class="empty-msg">Select a project above to manage resources.</div>';
+    return;
+  }
+  const rows = await api(`/admin/api/resources?client=${enc(ctxClient)}&project=${enc(ctxProject)}&release=${enc(ctxRelease)}`);
+  document.getElementById('stepContent').innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <h3>Resources for ${h(ctxProject)} — ${h(ctxRelease)} (${rows.length})</h3>
+      <button class="btn primary sm" onclick="openResModal()">+ Add Resource</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="grid">
+        <thead><tr><th>#</th><th>Resource Name</th><th>Email</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map((r,i) => `
+          <tr>
+            <td>${i+1}</td>
+            <td><strong>${h(r.ResourceName)}</strong></td>
+            <td>${h(r.ResourceEmail||'')}</td>
+            <td><div class="actions">
+              <button class="btn sm" onclick='openResModal(${JSON.stringify(r)})'>Edit</button>
+              <button class="btn sm danger" onclick="deleteRes(${r.ResourceID})">Del</button>
+            </div></td>
+          </tr>`).join('') : '<tr><td colspan="4" class="empty-msg">No resources yet.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function openResModal(rec) {
+  rec = rec || {};
+  document.getElementById('modalTitle').textContent = rec.ResourceID ? 'Edit Resource' : 'Add Resource';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row"><label>Resource Name *</label><input id="f_rname" value="${h(rec.ResourceName||'')}"></div>
+    <div class="form-row"><label>Email</label><input type="email" id="f_remail" value="${h(rec.ResourceEmail||'')}"></div>`;
+  modalSaveFn = async () => {
+    const d = {
+      ResourceID:   rec.ResourceID || null,
+      Client:       ctxClient,
+      ProjectName:  ctxProject,
+      Release:      ctxRelease,
+      ResourceName: document.getElementById('f_rname').value.trim(),
+      ResourceEmail:document.getElementById('f_remail').value.trim(),
+    };
+    if (!d.ResourceName) { toast('Name is required', true); return; }
+    await api('/admin/api/resources', 'POST', d);
+    toast('Saved'); closeModal(); renderResources();
+  };
+  openModal();
+}
+
+async function deleteRes(id) {
+  if (!confirm('Delete this resource?')) return;
+  await api(`/admin/api/resources/${id}`, 'DELETE');
+  toast('Deleted'); renderResources();
+}
+
+// ── STEP 5: RESOURCE CALENDAR ──
+async function renderResCalendar() {
+  const [rows, wcs] = await Promise.all([
+    api('/admin/api/rescalendar'),
+    api('/admin/api/wccodes'),
+  ]);
+  wcCodes = wcs;
+  document.getElementById('stepContent').innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <h3>Resource Schedules (${rows.length})</h3>
+      <button class="btn primary sm" onclick="openRCModal()">+ Add Schedule</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="grid">
+        <thead><tr><th>Resource</th><th>From</th><th>To</th><th>Work Days</th><th>Shift</th><th>Timezone</th><th>24x7</th><th>Template</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(r => `
+          <tr>
+            <td><strong>${h(r.ResourceName)}</strong></td>
+            <td>${h(r.EffectiveFrom)}</td><td>${h(r.EffectiveTo)}</td>
+            <td>${h(r.WorkDays||'')}</td>
+            <td>${r.ShiftStart&&r.ShiftEnd ? h(r.ShiftStart)+' – '+h(r.ShiftEnd) : ''}</td>
+            <td>${h(r.Timezone||'')}</td>
+            <td><span class="badge ${r.Is24x7?'badge-yes':'badge-no'}">${r.Is24x7?'Yes':'No'}</span></td>
+            <td>${h(r.WorkingHrsCode||'')}</td>
+            <td><div class="actions">
+              <button class="btn sm" onclick='openRCModal(${JSON.stringify(r)})'>Edit</button>
+              <button class="btn sm danger" onclick="deleteRC(${r.CalendarID})">Del</button>
+            </div></td>
+          </tr>`).join('') : '<tr><td colspan="9" class="empty-msg">No schedules yet.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function openRCModal(rec) {
+  rec = rec || {};
+  document.getElementById('modalTitle').textContent = rec.CalendarID ? 'Edit Schedule' : 'Add Schedule';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row"><label>Resource Name *</label><input id="f_rcres" value="${h(rec.ResourceName||'')}"></div>
+    <div class="form-row"><label>Resource Email</label><input id="f_rcemail" value="${h(rec.ResourceEmail||'')}"></div>
+    <div class="form-row">
+      <label>Use Template (optional — auto-fills shift times)</label>
+      <select id="f_rctemplate" onchange="applyWCTemplate()">
+        <option value="">— manual entry —</option>
+        ${wcCodes.map(w=>`<option value="${h(w.WorkingHrsCode)}" ${rec.WorkingHrsCode===w.WorkingHrsCode?'selected':''}>${h(w.WorkingHrsCode)} — ${h(w.Description||'')}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-row half"><label>Effective From *</label><input type="date" id="f_rcfrom" value="${h(rec.EffectiveFrom||'')}"></div>
+    <div class="form-row half"><label>Effective To *</label><input type="date" id="f_rcto" value="${h(rec.EffectiveTo||'')}"></div>
+    <div class="form-row"><label>Work Days</label><input id="f_rcdays" value="${h(rec.WorkDays||'')}" placeholder="MON,TUE,WED,THU,FRI  or  ALL"></div>
+    <div class="form-row half"><label>Shift Start</label><input id="f_rcstart" value="${h(rec.ShiftStart||'')}" placeholder="08:00"></div>
+    <div class="form-row half"><label>Shift End</label><input id="f_rcend" value="${h(rec.ShiftEnd||'')}" placeholder="17:00"></div>
+    <div class="form-row"><label>Timezone</label><select id="f_rctz">${tzOptions(rec.Timezone)}</select></div>
+    <div class="form-row"><div class="form-check"><input type="checkbox" id="f_rc247" ${rec.Is24x7?'checked':''}><label for="f_rc247">24x7</label></div></div>
+    <div class="form-row"><label>Notes</label><textarea id="f_rcnotes">${h(rec.Notes||'')}</textarea></div>`;
+  modalSaveFn = async () => {
+    const d = {
+      CalendarID:     rec.CalendarID || null,
+      ResourceName:   document.getElementById('f_rcres').value.trim(),
+      ResourceEmail:  document.getElementById('f_rcemail').value.trim(),
+      EffectiveFrom:  document.getElementById('f_rcfrom').value,
+      EffectiveTo:    document.getElementById('f_rcto').value,
+      WorkDays:       document.getElementById('f_rcdays').value.trim().toUpperCase(),
+      ShiftStart:     document.getElementById('f_rcstart').value.trim(),
+      ShiftEnd:       document.getElementById('f_rcend').value.trim(),
+      Timezone:       document.getElementById('f_rctz').value,
+      Is24x7:         document.getElementById('f_rc247').checked ? 1 : 0,
+      WorkingHrsCode: document.getElementById('f_rctemplate').value || null,
+      Notes:          document.getElementById('f_rcnotes').value.trim(),
+    };
+    if (!d.ResourceName || !d.EffectiveFrom || !d.EffectiveTo) { toast('Resource, From, To are required', true); return; }
+    await api('/admin/api/rescalendar', 'POST', d);
+    toast('Saved'); closeModal(); renderResCalendar();
+  };
+  openModal();
+}
+
+function applyWCTemplate() {
+  const code = document.getElementById('f_rctemplate').value;
+  if (!code) return;
+  const wc = wcCodes.find(w => w.WorkingHrsCode === code);
+  if (!wc) return;
+  if (wc.ShiftStart) document.getElementById('f_rcstart').value = wc.ShiftStart;
+  if (wc.ShiftEnd)   document.getElementById('f_rcend').value   = wc.ShiftEnd;
+  if (wc.WorkDays)   document.getElementById('f_rcdays').value  = wc.WorkDays;
+  if (wc.Timezone) {
+    const sel = document.getElementById('f_rctz');
+    for (const o of sel.options) { if (o.value === wc.Timezone) { o.selected = true; break; } }
+  }
+  document.getElementById('f_rc247').checked = !!wc.Is24x7;
+}
+
+async function deleteRC(id) {
+  if (!confirm('Delete this schedule?')) return;
+  await api(`/admin/api/rescalendar/${id}`, 'DELETE');
+  toast('Deleted'); renderResCalendar();
+}
+
+// ── STEP 6: HOLIDAYS ──
+async function renderHolidays() {
+  const rows = await api('/admin/api/holidays');
+  document.getElementById('stepContent').innerHTML = `
+  <div class="card">
+    <div class="card-header">
+      <h3>Holidays &amp; Blackout Dates (${rows.length})</h3>
+      <button class="btn primary sm" onclick="openHolModal()">+ Add Holiday</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="grid">
+        <thead><tr><th>Date</th><th>Description</th><th>Region</th><th>Recurring Yearly</th><th>Actions</th></tr></thead>
+        <tbody>
+          ${rows.length ? rows.map(r => `
+          <tr>
+            <td><strong>${h(r.HolidayDate)}</strong></td>
+            <td>${h(r.Description)}</td>
+            <td>${h(r.Region||'GLOBAL')}</td>
+            <td><span class="badge ${r.IsRecurringYearly?'badge-yes':'badge-no'}">${r.IsRecurringYearly?'Yes':'No'}</span></td>
+            <td><div class="actions">
+              <button class="btn sm" onclick='openHolModal(${JSON.stringify(r)})'>Edit</button>
+              <button class="btn sm danger" onclick="deleteHol(${r.HolidayID})">Del</button>
+            </div></td>
+          </tr>`).join('') : '<tr><td colspan="5" class="empty-msg">No holidays defined.</td></tr>'}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function openHolModal(rec) {
+  rec = rec || {};
+  document.getElementById('modalTitle').textContent = rec.HolidayID ? 'Edit Holiday' : 'Add Holiday';
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row"><label>Date *</label><input type="date" id="f_hdate" value="${h(rec.HolidayDate||'')}"></div>
+    <div class="form-row"><label>Description *</label><input id="f_hdesc" value="${h(rec.Description||'')}"></div>
+    <div class="form-row"><label>Region</label><input id="f_hreg" value="${h(rec.Region||'GLOBAL')}" placeholder="US, INDIA, GLOBAL"></div>
+    <div class="form-row"><div class="form-check"><input type="checkbox" id="f_hrecur" ${rec.IsRecurringYearly?'checked':''}><label for="f_hrecur">Recurring Yearly (same date each year)</label></div></div>`;
+  modalSaveFn = async () => {
+    const d = {
+      HolidayID:         rec.HolidayID || null,
+      HolidayDate:       document.getElementById('f_hdate').value,
+      Description:       document.getElementById('f_hdesc').value.trim(),
+      Region:            document.getElementById('f_hreg').value.trim() || 'GLOBAL',
+      IsRecurringYearly: document.getElementById('f_hrecur').checked ? 1 : 0,
+    };
+    if (!d.HolidayDate || !d.Description) { toast('Date and Description are required', true); return; }
+    await api('/admin/api/holidays', 'POST', d);
+    toast('Saved'); closeModal(); renderHolidays();
+  };
+  openModal();
+}
+
+async function deleteHol(id) {
+  if (!confirm('Delete this holiday?')) return;
+  await api(`/admin/api/holidays/${id}`, 'DELETE');
+  toast('Deleted'); renderHolidays();
+}
+
+// ── STEP 7: TASKS PLACEHOLDER ──
+function renderTasksPlaceholder() {
+  document.getElementById('stepContent').innerHTML = `
+  <div class="card">
+    <div class="card-body" style="text-align:center;padding:60px 20px">
+      <div style="font-size:40px;margin-bottom:16px">🚧</div>
+      <div style="font-size:16px;font-weight:700;color:#1a1a2e;margin-bottom:8px">Step 7 — Tasks</div>
+      <div style="font-size:13px;color:#666;max-width:400px;margin:0 auto;line-height:1.6">
+        Full task editor with WBS tree, indent/outdent, predecessor linking, and rollup calculations.<br><br>
+        Complete Steps 1–6 first to set up your project foundation.
+      </div>
+    </div>
+  </div>`;
+}
+
+// ── MODAL HELPERS ──
+function openModal()  { document.getElementById('modalOverlay').classList.add('open'); }
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); modalSaveFn = null; }
+function modalSave()  { if (modalSaveFn) modalSaveFn(); }
+
+// ── TOAST ──
+function toast(msg, err) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (err ? ' err' : '');
+  setTimeout(() => t.className = 'toast', 2500);
+}
+
+// ── API HELPER ──
+async function api(url, method, body) {
+  const opts = { method: method || 'GET', headers: {} };
+  if (body) { opts.body = JSON.stringify(body); opts.headers['Content-Type'] = 'application/json'; }
+  const r = await fetch(url, opts);
+  if (!r.ok) { toast('Server error: ' + r.status, true); throw new Error(r.status); }
+  return r.json();
+}
+
+// ── TIMEZONE OPTIONS ──
+function tzOptions(selected) {
+  const tzs = [
+    'America/New_York','America/Chicago','America/Denver','America/Los_Angeles',
+    'America/Phoenix','America/Anchorage','Pacific/Honolulu',
+    'Europe/London','Europe/Paris','Europe/Berlin',
+    'Asia/Kolkata','Asia/Tokyo','Asia/Shanghai','Asia/Singapore','Asia/Dubai',
+    'Australia/Sydney','Pacific/Auckland','UTC'
+  ];
+  return tzs.map(t => `<option value="${t}" ${selected===t?'selected':''}>${t}</option>`).join('');
+}
+
+// ── ESCAPE HTML ──
+function h(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function enc(s) { return encodeURIComponent(s||''); }
+
+// ── CLOSE MODAL ON OVERLAY CLICK ──
+document.getElementById('modalOverlay').addEventListener('click', e => {
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
+});
+
+// ── INIT ──
+loadCtxProjects();
+goStep(1);
+</script>
+</body>
+</html>
