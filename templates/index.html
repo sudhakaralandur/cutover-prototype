@@ -6,787 +6,506 @@
 <title>Cutover Plan Viewer</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 12px; background: #f0f2f5; color: #1a1a2e; }
 
-  body {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    font-size: 12px;
-    background: #f0f2f5;
-    color: #1a1a2e;
-  }
-
-  /* ── HEADER BAR ── */
   .app-header {
-    background: #1a1a2e;
-    color: #fff;
-    padding: 8px 16px;
-    display: flex;
-    align-items: center;
-    gap: 16px;
+    background: #1a1a2e; color: #fff; padding: 8px 16px;
+    display: flex; align-items: center; gap: 16px;
     box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    position: sticky; top: 0; z-index: 100;
   }
-  .app-header h1 {
-    font-size: 15px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    white-space: nowrap;
-  }
-  .app-header .subtitle {
-    font-size: 11px;
-    color: #8899bb;
-    white-space: nowrap;
-  }
+  .app-header .title { font-size: 15px; font-weight: 600; letter-spacing: 0.5px; }
+  .app-header .subtitle { font-size: 11px; color: #8899bb; }
   .header-spacer { flex: 1; }
 
-  /* ── TOOLBAR ── */
   .toolbar {
-    background: #fff;
-    border-bottom: 1px solid #dde1ea;
-    padding: 6px 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    position: sticky;
-    top: 38px;
-    z-index: 99;
+    background: #fff; border-bottom: 1px solid #dde1ea;
+    padding: 6px 12px; display: flex; align-items: center;
+    gap: 10px; flex-wrap: wrap;
+    position: sticky; top: 38px; z-index: 99;
   }
   .toolbar label { font-size: 11px; color: #555; white-space: nowrap; }
   .toolbar select, .toolbar input {
-    font-size: 11px;
-    padding: 3px 7px;
-    border: 1px solid #ccd0d9;
-    border-radius: 3px;
-    background: #fafbfc;
-    color: #1a1a2e;
-    outline: none;
-  }
-  .toolbar select:focus, .toolbar input:focus {
-    border-color: #4a7fcb;
+    font-size: 11px; padding: 3px 7px;
+    border: 1px solid #ccd0d9; border-radius: 3px;
+    background: #fafbfc; color: #1a1a2e; outline: none;
   }
   .toolbar input[type=text] { width: 180px; }
-
   .btn {
-    font-size: 11px;
-    padding: 3px 10px;
-    border: 1px solid #bbb;
-    border-radius: 3px;
-    background: #f4f5f8;
-    cursor: pointer;
-    color: #333;
-    white-space: nowrap;
+    font-size: 11px; padding: 3px 10px; border: 1px solid #bbb;
+    border-radius: 3px; background: #f4f5f8; cursor: pointer; color: #333;
   }
   .btn:hover { background: #e4e8f0; }
-  .btn.primary {
-    background: #2255aa;
-    color: #fff;
-    border-color: #1a4499;
-  }
-  .btn.primary:hover { background: #1a4499; }
+  .stats-bar { margin-left: auto; font-size: 11px; color: #666; white-space: nowrap; }
+  .stats-bar span { background: #eef2fb; padding: 2px 8px; border-radius: 10px; margin-left: 4px; }
 
-  .stats-bar {
-    margin-left: auto;
-    font-size: 11px;
-    color: #666;
-    white-space: nowrap;
-  }
-  .stats-bar span { 
-    background: #eef2fb;
-    padding: 2px 8px;
-    border-radius: 10px;
-    margin-left: 4px;
-  }
+  .table-wrap { overflow-x: auto; overflow-y: auto; height: calc(100vh - 80px); }
 
-  /* ── TABLE WRAPPER ── */
-  .table-wrap {
-    overflow-x: auto;
-    overflow-y: auto;
-    height: calc(100vh - 80px);
-  }
+  table { border-collapse: collapse; width: 100%; min-width: 1400px; table-layout: fixed; }
+  col.col-num  { width: 40px; }
+  col.col-wbs  { width: 70px; }
+  col.col-task { width: 420px; }
+  col.col-dur  { width: 80px; }
+  col.col-start  { width: 120px; }
+  col.col-finish { width: 120px; }
+  col.col-pct  { width: 130px; }
+  col.col-res  { width: 200px; }
+  col.col-team { width: 80px; }
+  col.col-pred { width: 80px; }
 
-  /* ── GRID TABLE ── */
-  table {
-    border-collapse: collapse;
-    width: 100%;
-    min-width: 1400px;
-    table-layout: fixed;
-  }
-
-  /* Column widths */
-  col.col-num      { width: 40px; }
-  col.col-wbs      { width: 70px; }
-  col.col-task     { width: 420px; }
-  col.col-dur      { width: 80px; }
-  col.col-start    { width: 120px; }
-  col.col-finish   { width: 120px; }
-  col.col-pct      { width: 130px; }
-  col.col-res      { width: 200px; }
-  col.col-team     { width: 80px; }
-  col.col-pred     { width: 80px; }
-
-  thead tr {
-    background: #1a1a2e;
-    color: #c8d4ee;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
+  thead tr { background: #1a1a2e; color: #c8d4ee; }
   thead th {
-    padding: 7px 6px;
-    text-align: left;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.4px;
-    border-right: 1px solid #2d3a5a;
-    white-space: nowrap;
-    overflow: hidden;
-    user-select: none;
-    cursor: pointer;
+    padding: 7px 6px; text-align: left; font-size: 11px;
+    font-weight: 600; letter-spacing: 0.4px;
+    border-right: 1px solid #2d3a5a; white-space: nowrap;
+    overflow: hidden; user-select: none; cursor: pointer;
+    position: sticky; top: 0; z-index: 10;
   }
   thead th:hover { background: #252f4a; }
-  thead th.sorted-asc::after  { content: ' ↑'; color: #7aadff; }
-  thead th.sorted-desc::after { content: ' ↓'; color: #7aadff; }
 
-  tbody tr {
-    border-bottom: 1px solid #e8eaf0;
-    cursor: pointer;
-    transition: background 0.08s;
-  }
+  tbody tr { border-bottom: 1px solid #e8eaf0; cursor: pointer; }
   tbody tr:nth-child(even) { background: #f7f8fc; }
   tbody tr:nth-child(odd)  { background: #ffffff; }
   tbody tr:hover           { background: #dce8ff !important; }
   tbody tr.selected        { background: #b8d0f8 !important; }
   tbody tr.header-row      { background: #eef1f8 !important; }
-  tbody tr.header-row:hover { background: #dce8ff !important; }
+  tbody tr.header-row:hover   { background: #dce8ff !important; }
   tbody tr.header-row.selected { background: #b8d0f8 !important; }
-  tbody tr.collapsed-child { display: none; }
 
   td {
-    padding: 4px 6px;
-    font-size: 11.5px;
-    vertical-align: middle;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
+    padding: 4px 6px; font-size: 11.5px; vertical-align: middle;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
     border-right: 1px solid #eceef4;
   }
-
-  /* Row number */
-  td.col-num {
-    text-align: right;
-    color: #999;
-    font-size: 10.5px;
-    padding-right: 8px;
-  }
-
-  /* WBS */
-  td.col-wbs {
-    font-family: 'Courier New', monospace;
-    font-size: 11px;
-    color: #445;
-  }
-
-  /* Task name cell */
-  td.col-task {
-    overflow: visible;
-  }
-  .task-cell {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    overflow: hidden;
-  }
-  .indent { display: inline-block; flex-shrink: 0; }
-  .toggle-btn {
-    display: inline-block;
-    width: 14px;
-    height: 14px;
-    line-height: 14px;
-    text-align: center;
-    font-size: 9px;
-    cursor: pointer;
-    flex-shrink: 0;
-    color: #336;
-    border: 1px solid #bbc;
-    border-radius: 2px;
-    background: #e8eaf5;
-    user-select: none;
-  }
-  .toggle-btn:hover { background: #d0d8f0; }
-  .task-icon {
-    flex-shrink: 0;
-    font-size: 9px;
-    color: #2255aa;
-  }
-  .task-icon.header-icon { color: #1a1a2e; font-size: 8px; }
-  .task-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .task-name.header-name {
-    font-weight: 700;
-    color: #1a1a2e;
-  }
-  .task-name.leaf-name {
-    font-weight: 400;
-    color: #222;
-  }
-
-  /* Duration */
-  td.col-dur { text-align: right; color: #334; }
-
-  /* Dates */
+  td.col-num  { text-align: right; color: #999; font-size: 10.5px; padding-right: 8px; }
+  td.col-wbs  { font-family: 'Courier New', monospace; font-size: 11px; color: #445; }
+  td.col-task { overflow: visible; }
+  td.col-dur  { text-align: right; color: #334; }
   td.col-start, td.col-finish { color: #334; font-size: 11px; }
-
-  /* % Complete */
-  td.col-pct { padding: 3px 6px; }
-  .pct-wrap {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .pct-bar-bg {
-    flex: 1;
-    height: 10px;
-    background: #dde1ea;
-    border-radius: 2px;
-    overflow: hidden;
-    min-width: 40px;
-  }
-  .pct-bar-fill {
-    height: 100%;
-    background: #2a7de1;
-    border-radius: 2px;
-    transition: width 0.3s;
-  }
-  .pct-bar-fill.complete { background: #27ae60; }
-  .pct-bar-fill.partial  { background: #2a7de1; }
-  .pct-label {
-    font-size: 10.5px;
-    color: #555;
-    min-width: 28px;
-    text-align: right;
-  }
-
-  /* Resource */
-  td.col-res { font-size: 11px; color: #334; }
-
-  /* Team badge */
+  td.col-pct  { padding: 3px 6px; }
+  td.col-res  { font-size: 11px; color: #334; }
   td.col-team { text-align: center; }
-  .team-badge {
-    display: inline-block;
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.3px;
-    white-space: nowrap;
-  }
-
-  /* Predecessor */
   td.col-pred { color: #667; font-size: 11px; }
 
-  /* ── TEAM BADGE COLORS ── */
-  .badge-PMO       { background: #d4e6ff; color: #1a4499; }
-  .badge-EWM       { background: #d4f0e8; color: #0d6e3f; }
-  .badge-FTM       { background: #fde8cc; color: #8a4200; }
-  .badge-SEC       { background: #f5d4f5; color: #6a0d6a; }
-  .badge-BASIS     { background: #fff2cc; color: #7a5c00; }
-  .badge-DATA      { background: #d4f4ff; color: #005f7a; }
-  .badge-BI        { background: #e8d4ff; color: #4a0080; }
-  .badge-INT       { background: #ffd4d4; color: #800000; }
-  .badge-Analytics { background: #d4ffe8; color: #006633; }
-  .badge-OTC       { background: #ffe8d4; color: #803300; }
-  .badge-TM        { background: #d4eeff; color: #003d80; }
-  .badge-DTS       { background: #f0ffd4; color: #3d6600; }
-  .badge-PTP       { background: #ffd4ee; color: #800044; }
-  .badge-LE        { background: #d4fff0; color: #006655; }
-  .badge-default   { background: #e8eaf0; color: #445; }
-
-  /* ── LOADING / EMPTY ── */
-  .loading-row td, .empty-row td {
-    text-align: center;
-    padding: 40px;
-    color: #888;
-    font-size: 13px;
+  .task-cell { display: flex; align-items: center; gap: 4px; overflow: hidden; }
+  .indent    { display: inline-block; flex-shrink: 0; }
+  .toggle-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; font-size: 9px; cursor: pointer;
+    flex-shrink: 0; color: #336; border: 1px solid #bbc;
+    border-radius: 2px; background: #e8eaf5; user-select: none;
   }
+  .toggle-btn:hover { background: #d0d8f0; }
+  .spacer-btn { display: inline-block; width: 14px; flex-shrink: 0; }
+  .task-icon  { flex-shrink: 0; font-size: 9px; color: #2255aa; }
+  .task-icon.hi { color: #1a1a2e; font-size: 8px; }
+  .task-name  { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .task-name.hn { font-weight: 700; color: #1a1a2e; }
+  .task-name.ln { font-weight: 400; color: #222; }
 
-  /* ── DETAIL PANEL ── */
+  .pct-wrap  { display: flex; align-items: center; gap: 5px; }
+  .pct-bg    { flex: 1; height: 10px; background: #dde1ea; border-radius: 2px; overflow: hidden; min-width: 40px; }
+  .pct-fill  { height: 100%; border-radius: 2px; }
+  .pct-fill.c { background: #27ae60; }
+  .pct-fill.p { background: #2a7de1; }
+  .pct-lbl   { font-size: 10.5px; color: #555; min-width: 28px; text-align: right; }
+
+  .team-badge {
+    display: inline-block; padding: 1px 6px; border-radius: 3px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.3px; white-space: nowrap;
+  }
+  .b-PMO { background:#d4e6ff; color:#1a4499; }
+  .b-EWM { background:#d4f0e8; color:#0d6e3f; }
+  .b-FTM { background:#fde8cc; color:#8a4200; }
+  .b-SEC { background:#f5d4f5; color:#6a0d6a; }
+  .b-BASIS { background:#fff2cc; color:#7a5c00; }
+  .b-DATA { background:#d4f4ff; color:#005f7a; }
+  .b-BI   { background:#e8d4ff; color:#4a0080; }
+  .b-INT  { background:#ffd4d4; color:#800000; }
+  .b-OTC  { background:#ffe8d4; color:#803300; }
+  .b-TM   { background:#d4eeff; color:#003d80; }
+  .b-DTS  { background:#f0ffd4; color:#3d6600; }
+  .b-PTP  { background:#ffd4ee; color:#800044; }
+  .b-LE   { background:#d4fff0; color:#006655; }
+  .b-def  { background:#e8eaf0; color:#445; }
+
+  .msg-row td { text-align:center; padding:40px; color:#888; font-size:13px; }
+
   .detail-panel {
-    display: none;
-    position: fixed;
-    right: 0; top: 38px;
-    width: 340px;
-    height: calc(100vh - 38px);
-    background: #fff;
-    border-left: 2px solid #2255aa;
+    display: none; position: fixed; right: 0; top: 38px;
+    width: 340px; height: calc(100vh - 38px);
+    background: #fff; border-left: 2px solid #2255aa;
     box-shadow: -4px 0 16px rgba(0,0,0,0.12);
-    z-index: 200;
-    overflow-y: auto;
-    padding: 0;
+    z-index: 200; overflow-y: auto;
   }
   .detail-panel.open { display: block; }
-  .detail-header {
-    background: #1a1a2e;
-    color: #fff;
-    padding: 10px 14px;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 8px;
+  .detail-hdr {
+    background: #1a1a2e; color: #fff; padding: 10px 14px;
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 8px;
   }
-  .detail-header h3 { font-size: 12px; font-weight: 600; line-height: 1.4; flex: 1; }
-  .detail-close {
-    cursor: pointer;
-    font-size: 16px;
-    color: #8899bb;
-    flex-shrink: 0;
-    line-height: 1;
-  }
-  .detail-close:hover { color: #fff; }
+  .detail-hdr h3 { font-size: 12px; font-weight: 600; line-height: 1.4; flex: 1; }
+  .det-close { cursor: pointer; font-size: 16px; color: #8899bb; flex-shrink: 0; }
+  .det-close:hover { color: #fff; }
   .detail-body { padding: 12px 14px; }
-  .detail-row { margin-bottom: 10px; }
-  .detail-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
-  .detail-value { font-size: 12px; color: #1a1a2e; word-break: break-word; }
-  .detail-divider { border: none; border-top: 1px solid #eee; margin: 10px 0; }
+  .det-row { margin-bottom: 10px; }
+  .det-lbl { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px; }
+  .det-val { font-size: 12px; color: #1a1a2e; word-break: break-word; }
 
-  /* ── SCROLLBAR ── */
   ::-webkit-scrollbar { width: 7px; height: 7px; }
   ::-webkit-scrollbar-track { background: #f0f2f5; }
   ::-webkit-scrollbar-thumb { background: #bbc4d8; border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: #99aacc; }
 </style>
 </head>
 <body>
 
-<!-- APP HEADER -->
 <div class="app-header">
-  <div>
-    <div class="h1">⚡ Cutover Plan Viewer</div>
-  </div>
-  <div class="subtitle" id="projectLabel">Loading...</div>
+  <span class="title">⚡ Cutover Plan Viewer</span>
+  <span class="subtitle" id="projectLabel">Loading...</span>
   <div class="header-spacer"></div>
-  <div class="subtitle" id="clock"></div>
+  <span class="subtitle" id="clock"></span>
 </div>
 
-<!-- TOOLBAR -->
 <div class="toolbar">
   <label>Project</label>
   <select id="projectSelect">
     {% for p in projects %}
-    <option value="{{ p.Client }}|{{ p.ProjectName }}|{{ p.Release }}">
-      {{ p.ProjectName }} — {{ p.Release }}
-    </option>
+    <option value="{{ p.Client }}|{{ p.ProjectName }}|{{ p.Release }}">{{ p.ProjectName }} — {{ p.Release }}</option>
     {% endfor %}
   </select>
-
   <label>Team</label>
-  <select id="teamFilter">
-    <option value="">All Teams</option>
-  </select>
-
+  <select id="teamFilter"><option value="">All Teams</option></select>
   <label>Search</label>
-  <input type="text" id="searchBox" placeholder="Task, resource, WBS..." />
-
+  <input type="text" id="searchBox" placeholder="Task, resource, WBS...">
   <button class="btn" onclick="expandAll()">Expand All</button>
   <button class="btn" onclick="collapseAll()">Collapse All</button>
-  <button class="btn" onclick="clearSearch()">Clear</button>
-
+  <button class="btn" onclick="clearFilters()">Clear</button>
   <div class="stats-bar">
     <span id="statTotal">—</span>
-    <span id="statHeaders">—</span>
     <span id="statVisible">—</span>
   </div>
 </div>
 
-<!-- TABLE -->
-<div class="table-wrap" id="tableWrap">
+<div class="table-wrap">
   <table id="taskTable">
     <colgroup>
-      <col class="col-num">
-      <col class="col-wbs">
-      <col class="col-task">
-      <col class="col-dur">
-      <col class="col-start">
-      <col class="col-finish">
-      <col class="col-pct">
-      <col class="col-res">
-      <col class="col-team">
-      <col class="col-pred">
+      <col class="col-num"><col class="col-wbs"><col class="col-task">
+      <col class="col-dur"><col class="col-start"><col class="col-finish">
+      <col class="col-pct"><col class="col-res"><col class="col-team"><col class="col-pred">
     </colgroup>
     <thead>
       <tr>
-        <th>#</th>
-        <th data-col="wbs">WBS</th>
-        <th data-col="taskDesc">Task Name</th>
-        <th data-col="duration">Duration</th>
-        <th data-col="start">Start</th>
-        <th data-col="finish">Finish</th>
-        <th data-col="pctComplete">% Complete</th>
-        <th data-col="resource">Resource Names</th>
-        <th data-col="team">Team</th>
-        <th data-col="predecessor">Pred</th>
+        <th>#</th><th>WBS</th><th>Task Name</th><th>Duration</th>
+        <th>Start</th><th>Finish</th><th>% Complete</th>
+        <th>Resource Names</th><th>Team</th><th>Pred</th>
       </tr>
     </thead>
     <tbody id="taskBody">
-      <tr class="loading-row"><td colspan="10">Loading tasks...</td></tr>
+      <tr class="msg-row"><td colspan="10">Loading tasks...</td></tr>
     </tbody>
   </table>
 </div>
 
-<!-- DETAIL PANEL -->
 <div class="detail-panel" id="detailPanel">
-  <div class="detail-header">
+  <div class="detail-hdr">
     <h3 id="detailTitle">Task Detail</h3>
-    <span class="detail-close" onclick="closeDetail()">✕</span>
+    <span class="det-close" onclick="closeDetail()">✕</span>
   </div>
   <div class="detail-body" id="detailBody"></div>
 </div>
 
 <script>
-let allTasks = [];
+// ── STATE ──
+let allTasks    = [];
+let visibleRows = [];   // pre-computed list of {task, rowNum} to render
 let collapsedWbs = new Set();
-let selectedRow = null;
-let sortCol = null;
-let sortDir = 'asc';
-let rowNum = 0;
+let selectedTr  = null;
+let renderTimer = null;
 
 // ── CLOCK ──
-function updateClock() {
-  const now = new Date();
+function tick() {
+  const n = new Date();
   document.getElementById('clock').textContent =
-    now.toLocaleDateString('en-US', {weekday:'short',month:'short',day:'numeric'}) +
-    ' ' + now.toLocaleTimeString('en-US', {hour:'2-digit',minute:'2-digit'});
+    n.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}) +
+    ' ' + n.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
 }
-updateClock();
-setInterval(updateClock, 10000);
+tick(); setInterval(tick, 30000);
 
-// ── LOAD TASKS ──
+// ── LOAD ──
 function loadTasks() {
   const [client, project, release] = document.getElementById('projectSelect').value.split('|');
   const team   = document.getElementById('teamFilter').value;
   const search = document.getElementById('searchBox').value;
 
   document.getElementById('taskBody').innerHTML =
-    '<tr class="loading-row"><td colspan="10">Loading...</td></tr>';
+    '<tr class="msg-row"><td colspan="10">Loading...</td></tr>';
 
-  const url = `/api/tasks?client=${encodeURIComponent(client)}&project=${encodeURIComponent(project)}&release=${encodeURIComponent(release)}&team=${encodeURIComponent(team)}&search=${encodeURIComponent(search)}`;
-
-  fetch(url)
+  fetch(`/api/tasks?client=${enc(client)}&project=${enc(project)}&release=${enc(release)}&team=${enc(team)}&search=${enc(search)}`)
     .then(r => r.json())
     .then(data => {
       allTasks = data.tasks;
-      document.getElementById('projectLabel').textContent =
-        `${project}  ·  ${release}`;
+      document.getElementById('projectLabel').textContent = `${project}  ·  ${release}`;
 
-      // Populate team filter
+      // Populate team filter (preserve selection)
       const tf = document.getElementById('teamFilter');
       const cur = tf.value;
       tf.innerHTML = '<option value="">All Teams</option>';
       data.teams.forEach(t => {
-        const opt = document.createElement('option');
-        opt.value = t; opt.textContent = t;
-        if (t === cur) opt.selected = true;
-        tf.appendChild(opt);
+        const o = document.createElement('option');
+        o.value = t; o.textContent = t;
+        if (t === cur) o.selected = true;
+        tf.appendChild(o);
       });
 
-      renderTable();
+      collapsedWbs.clear();
+      scheduleRender();
     })
     .catch(() => {
       document.getElementById('taskBody').innerHTML =
-        '<tr class="empty-row"><td colspan="10">Failed to load tasks.</td></tr>';
+        '<tr class="msg-row"><td colspan="10">Failed to load.</td></tr>';
     });
 }
 
-// ── RENDER TABLE ──
-function renderTable() {
-  const tbody = document.getElementById('taskBody');
-  const frag  = document.createDocumentFragment();
-  rowNum = 0;
+// ── SCHEDULE RENDER (debounce) ──
+function scheduleRender() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderTable, 50);
+}
 
-  if (!allTasks.length) {
-    const tr = document.createElement('tr');
-    tr.className = 'empty-row';
-    tr.innerHTML = '<td colspan="10">No tasks found.</td>';
-    frag.appendChild(tr);
-    tbody.innerHTML = '';
-    tbody.appendChild(frag);
-    updateStats();
-    return;
+// ── COMPUTE VISIBLE ──
+function computeVisible() {
+  // Pre-build set of WBS prefixes that are collapsed
+  // A task is hidden if any ancestor WBS is collapsed
+  visibleRows = [];
+  let n = 0;
+  for (const t of allTasks) {
+    if (!isHidden(t.wbs)) {
+      n++;
+      visibleRows.push({ task: t, rowNum: n });
+    }
   }
-
-  // Build WBS tree — determine which tasks are hidden
-  const wbsSet = new Set(allTasks.map(t => t.wbs));
-
-  allTasks.forEach((task, idx) => {
-    const tr = document.createElement('tr');
-    tr.dataset.taskId = task.taskId;
-    tr.dataset.wbs    = task.wbs;
-    tr.dataset.idx    = idx;
-
-    if (task.isHeader) tr.classList.add('header-row');
-
-    // Is this task hidden by a collapsed ancestor?
-    if (isHidden(task.wbs)) {
-      tr.classList.add('collapsed-child');
-    }
-
-    // Row number (only visible rows)
-    rowNum++;
-    const tdNum = document.createElement('td');
-    tdNum.className = 'col-num';
-    tdNum.textContent = rowNum;
-    tr.appendChild(tdNum);
-
-    // WBS
-    const tdWbs = document.createElement('td');
-    tdWbs.className = 'col-wbs';
-    tdWbs.textContent = task.wbs;
-    tr.appendChild(tdWbs);
-
-    // Task Name (indented)
-    const tdTask = document.createElement('td');
-    tdTask.className = 'col-task';
-    const depth = task.depth;
-
-    let html = `<div class="task-cell">`;
-    html += `<span class="indent" style="width:${depth * 14}px"></span>`;
-
-    if (task.isHeader) {
-      const isCollapsed = collapsedWbs.has(task.wbs);
-      html += `<span class="toggle-btn" data-wbs="${task.wbs}">${isCollapsed ? '+' : '−'}</span>`;
-      html += `<span class="task-icon header-icon">▼</span>`;
-      html += `<span class="task-name header-name">${escHtml(task.taskDesc)}</span>`;
-    } else {
-      html += `<span style="width:16px;display:inline-block;flex-shrink:0"></span>`;
-      html += `<span class="task-icon">◆</span>`;
-      html += `<span class="task-name leaf-name">${escHtml(task.taskDesc)}</span>`;
-    }
-    html += `</div>`;
-    tdTask.innerHTML = html;
-    tr.appendChild(tdTask);
-
-    // Duration
-    const tdDur = document.createElement('td');
-    tdDur.className = 'col-dur';
-    tdDur.textContent = fmtDuration(task.duration);
-    tr.appendChild(tdDur);
-
-    // Start
-    const tdStart = document.createElement('td');
-    tdStart.className = 'col-start';
-    tdStart.textContent = task.start;
-    tr.appendChild(tdStart);
-
-    // Finish
-    const tdFinish = document.createElement('td');
-    tdFinish.className = 'col-finish';
-    tdFinish.textContent = task.finish;
-    tr.appendChild(tdFinish);
-
-    // % Complete
-    const tdPct = document.createElement('td');
-    tdPct.className = 'col-pct';
-    const pct = task.pctComplete || 0;
-    const fillClass = pct >= 100 ? 'complete' : 'partial';
-    tdPct.innerHTML = `
-      <div class="pct-wrap">
-        <div class="pct-bar-bg">
-          <div class="pct-bar-fill ${fillClass}" style="width:${Math.min(pct,100)}%"></div>
-        </div>
-        <span class="pct-label">${pct}%</span>
-      </div>`;
-    tr.appendChild(tdPct);
-
-    // Resource
-    const tdRes = document.createElement('td');
-    tdRes.className = 'col-res';
-    tdRes.textContent = task.resource;
-    tdRes.title = task.resource;
-    tr.appendChild(tdRes);
-
-    // Team badge
-    const tdTeam = document.createElement('td');
-    tdTeam.className = 'col-team';
-    if (task.team) {
-      const badgeClass = getBadgeClass(task.team);
-      tdTeam.innerHTML = `<span class="team-badge ${badgeClass}">${escHtml(task.team)}</span>`;
-    }
-    tr.appendChild(tdTeam);
-
-    // Predecessor
-    const tdPred = document.createElement('td');
-    tdPred.className = 'col-pred';
-    tdPred.textContent = task.predecessor;
-    tr.appendChild(tdPred);
-
-    // Click handlers
-    tr.addEventListener('click', (e) => {
-      if (e.target.classList.contains('toggle-btn')) return;
-      selectRow(tr, task);
-    });
-
-    frag.appendChild(tr);
-  });
-
-  // Toggle button handlers (delegated)
-  tbody.innerHTML = '';
-  tbody.appendChild(frag);
-
-  tbody.addEventListener('click', (e) => {
-    if (e.target.classList.contains('toggle-btn')) {
-      const wbs = e.target.dataset.wbs;
-      toggleCollapse(wbs);
-    }
-  });
-
-  updateStats();
 }
 
-// ── IS HIDDEN ──
 function isHidden(wbs) {
-  for (const cWbs of collapsedWbs) {
-    if (wbs !== cWbs && wbs.startsWith(cWbs + '.')) return true;
+  // Walk up WBS ancestors and check if any is collapsed
+  const parts = wbs.split('.');
+  for (let i = 1; i < parts.length; i++) {
+    const ancestor = parts.slice(0, i).join('.');
+    if (collapsedWbs.has(ancestor)) return true;
   }
   return false;
 }
 
-// ── TOGGLE COLLAPSE ──
-function toggleCollapse(wbs) {
-  if (collapsedWbs.has(wbs)) {
-    collapsedWbs.delete(wbs);
-  } else {
-    collapsedWbs.add(wbs);
+// ── RENDER TABLE (chunked) ──
+const CHUNK = 150;
+
+function renderTable() {
+  computeVisible();
+  const tbody = document.getElementById('taskBody');
+  tbody.innerHTML = '';
+
+  if (!visibleRows.length) {
+    tbody.innerHTML = '<tr class="msg-row"><td colspan="10">No tasks found.</td></tr>';
+    updateStats();
+    return;
   }
-  renderTable();
+
+  // Render first chunk synchronously so page shows fast
+  const frag = buildChunk(0, Math.min(CHUNK, visibleRows.length));
+  tbody.appendChild(frag);
+  updateStats();
+
+  // Render remaining chunks asynchronously
+  if (visibleRows.length > CHUNK) {
+    renderChunkAsync(CHUNK);
+  }
 }
 
-// ── EXPAND / COLLAPSE ALL ──
-function expandAll() {
-  collapsedWbs.clear();
-  renderTable();
-}
-
-function collapseAll() {
-  // Collapse only top-level headers (no dot in WBS)
-  allTasks.forEach(t => {
-    if (t.isHeader && !t.wbs.includes('.')) {
-      collapsedWbs.add(t.wbs);
-    }
+function renderChunkAsync(start) {
+  requestAnimationFrame(() => {
+    const end  = Math.min(start + CHUNK, visibleRows.length);
+    const frag = buildChunk(start, end);
+    document.getElementById('taskBody').appendChild(frag);
+    updateStats();
+    if (end < visibleRows.length) renderChunkAsync(end);
   });
-  renderTable();
 }
 
-// ── SELECT ROW ──
-function selectRow(tr, task) {
-  if (selectedRow) selectedRow.classList.remove('selected');
+function buildChunk(start, end) {
+  const frag = document.createDocumentFragment();
+  for (let i = start; i < end; i++) {
+    const { task, rowNum } = visibleRows[i];
+    frag.appendChild(buildRow(task, rowNum));
+  }
+  return frag;
+}
+
+// ── BUILD ONE ROW ──
+function buildRow(task, rn) {
+  const tr = document.createElement('tr');
+  tr.dataset.wbs = task.wbs;
+  if (task.isHeader) tr.classList.add('header-row');
+
+  // #
+  tr.appendChild(makeTd('col-num', rn));
+
+  // WBS
+  tr.appendChild(makeTd('col-wbs', task.wbs));
+
+  // Task Name
+  const tdT = document.createElement('td');
+  tdT.className = 'col-task';
+  const d = task.depth;
+  let h = `<div class="task-cell">`;
+  h += `<span class="indent" style="width:${d*14}px"></span>`;
+  if (task.isHeader) {
+    const col = collapsedWbs.has(task.wbs);
+    h += `<span class="toggle-btn" data-wbs="${esc(task.wbs)}">${col?'+':'−'}</span>`;
+    h += `<span class="task-icon hi">▼</span>`;
+    h += `<span class="task-name hn">${esc(task.taskDesc)}</span>`;
+  } else {
+    h += `<span class="spacer-btn"></span>`;
+    h += `<span class="task-icon">◆</span>`;
+    h += `<span class="task-name ln">${esc(task.taskDesc)}</span>`;
+  }
+  h += `</div>`;
+  tdT.innerHTML = h;
+  tr.appendChild(tdT);
+
+  // Duration
+  tr.appendChild(makeTd('col-dur', fmtDur(task.duration)));
+
+  // Start / Finish
+  tr.appendChild(makeTd('col-start',  task.start));
+  tr.appendChild(makeTd('col-finish', task.finish));
+
+  // % Complete
+  const tdP = document.createElement('td');
+  tdP.className = 'col-pct';
+  const pct = task.pctComplete || 0;
+  tdP.innerHTML = `<div class="pct-wrap">
+    <div class="pct-bg"><div class="pct-fill ${pct>=100?'c':'p'}" style="width:${Math.min(pct,100)}%"></div></div>
+    <span class="pct-lbl">${pct}%</span></div>`;
+  tr.appendChild(tdP);
+
+  // Resource
+  const tdR = document.createElement('td');
+  tdR.className = 'col-res';
+  tdR.textContent = task.resource;
+  tdR.title = task.resource;
+  tr.appendChild(tdR);
+
+  // Team badge
+  const tdTm = document.createElement('td');
+  tdTm.className = 'col-team';
+  if (task.team) {
+    tdTm.innerHTML = `<span class="team-badge ${badgeCls(task.team)}">${esc(task.team)}</span>`;
+  }
+  tr.appendChild(tdTm);
+
+  // Predecessor
+  tr.appendChild(makeTd('col-pred', task.predecessor));
+
+  // Events
+  tr.addEventListener('click', e => {
+    if (e.target.classList.contains('toggle-btn')) {
+      toggleCollapse(e.target.dataset.wbs);
+      return;
+    }
+    doSelect(tr, task);
+  });
+
+  return tr;
+}
+
+function makeTd(cls, text) {
+  const td = document.createElement('td');
+  td.className = cls;
+  td.textContent = text ?? '';
+  return td;
+}
+
+// ── COLLAPSE ──
+function toggleCollapse(wbs) {
+  if (collapsedWbs.has(wbs)) collapsedWbs.delete(wbs);
+  else collapsedWbs.add(wbs);
+  scheduleRender();
+}
+
+function expandAll()   { collapsedWbs.clear(); scheduleRender(); }
+function collapseAll() {
+  allTasks.forEach(t => { if (t.isHeader && !t.wbs.includes('.')) collapsedWbs.add(t.wbs); });
+  scheduleRender();
+}
+
+// ── SELECT + DETAIL ──
+function doSelect(tr, task) {
+  if (selectedTr) selectedTr.classList.remove('selected');
   tr.classList.add('selected');
-  selectedRow = tr;
+  selectedTr = tr;
   showDetail(task);
 }
 
-// ── DETAIL PANEL ──
-function showDetail(task) {
-  const panel = document.getElementById('detailPanel');
-  panel.classList.add('open');
-  document.getElementById('detailTitle').textContent = task.taskDesc;
-
-  const rows = [
-    ['WBS',           task.wbs],
-    ['Task ID',       task.taskId],
-    ['Unique ID',     task.uniqueId],
-    ['Team',          task.team],
-    ['Duration',      fmtDuration(task.duration)],
-    ['Start',         task.start],
-    ['Finish',        task.finish],
-    ['% Complete',    task.pctComplete + '%'],
-    ['Resource(s)',   task.resource],
-    ['Predecessor',   task.predecessor],
-    ['Successors',    task.successors],
-    ['Baseline Start',  task.blStart],
-    ['Baseline Finish', task.blFinish],
-    ['Notes',         task.notes],
+function showDetail(t) {
+  document.getElementById('detailPanel').classList.add('open');
+  document.getElementById('detailTitle').textContent = t.taskDesc;
+  const fields = [
+    ['WBS', t.wbs], ['Task ID', t.taskId], ['Unique ID', t.uniqueId],
+    ['Team', t.team], ['Duration', fmtDur(t.duration)],
+    ['Start', t.start], ['Finish', t.finish], ['% Complete', t.pctComplete+'%'],
+    ['Resource(s)', t.resource], ['Predecessor', t.predecessor],
+    ['Successors', t.successors], ['Baseline Start', t.blStart],
+    ['Baseline Finish', t.blFinish], ['Notes', t.notes],
   ];
-
-  let html = '';
-  rows.forEach(([label, val]) => {
-    if (!val && val !== 0) return;
-    html += `
-      <div class="detail-row">
-        <div class="detail-label">${label}</div>
-        <div class="detail-value">${escHtml(String(val))}</div>
-      </div>`;
-  });
-
-  document.getElementById('detailBody').innerHTML = html;
+  document.getElementById('detailBody').innerHTML = fields
+    .filter(([,v]) => v || v===0)
+    .map(([l,v]) => `<div class="det-row"><div class="det-lbl">${l}</div><div class="det-val">${esc(String(v))}</div></div>`)
+    .join('');
 }
 
 function closeDetail() {
   document.getElementById('detailPanel').classList.remove('open');
-  if (selectedRow) {
-    selectedRow.classList.remove('selected');
-    selectedRow = null;
-  }
+  if (selectedTr) { selectedTr.classList.remove('selected'); selectedTr = null; }
 }
 
 // ── STATS ──
 function updateStats() {
-  const total   = allTasks.length;
-  const headers = allTasks.filter(t => t.isHeader).length;
-  const visible = document.querySelectorAll('#taskBody tr:not(.collapsed-child):not(.loading-row):not(.empty-row)').length;
-  document.getElementById('statTotal').textContent   = `${total} tasks`;
-  document.getElementById('statHeaders').textContent = `${headers} sections`;
-  document.getElementById('statVisible').textContent = `${visible} visible`;
+  document.getElementById('statTotal').textContent   = `${allTasks.length} tasks`;
+  document.getElementById('statVisible').textContent = `${visibleRows.length} visible`;
 }
 
-// ── FORMAT DURATION ──
-function fmtDuration(mins) {
-  if (!mins || mins === 0) return '0 mins';
-  if (mins < 60)  return mins + ' mins';
-  const hrs = (mins / 60).toFixed(1);
-  if (mins < 480) return hrs + ' hrs';
-  const days = (mins / 60 / 8).toFixed(1);
-  return days + ' days';
+// ── HELPERS ──
+function fmtDur(m) {
+  if (!m) return '0 mins';
+  if (m < 60)  return m + ' mins';
+  if (m < 480) return (m/60).toFixed(1) + ' hrs';
+  return (m/60/8).toFixed(1) + ' days';
 }
 
-// ── TEAM BADGE CLASS ──
-function getBadgeClass(team) {
-  const map = {
-    'PMO':'badge-PMO','EWM':'badge-EWM','FTM':'badge-FTM',
-    'SEC':'badge-SEC','BASIS':'badge-BASIS','DATA':'badge-DATA',
-    'BI':'badge-BI','INT':'badge-INT','Analytics':'badge-Analytics',
-    'OTC':'badge-OTC','TM':'badge-TM','DTS':'badge-DTS',
-    'PTP':'badge-PTP','LE':'badge-LE'
-  };
-  return map[team] || 'badge-default';
+function badgeCls(t) {
+  return {'PMO':'b-PMO','EWM':'b-EWM','FTM':'b-FTM','SEC':'b-SEC',
+    'BASIS':'b-BASIS','DATA':'b-DATA','BI':'b-BI','INT':'b-INT',
+    'OTC':'b-OTC','TM':'b-TM','DTS':'b-DTS','PTP':'b-PTP','LE':'b-LE'}[t] || 'b-def';
 }
 
-// ── ESCAPE HTML ──
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+function enc(s) { return encodeURIComponent(s||''); }
 
-// ── CLEAR SEARCH ──
-function clearSearch() {
+function clearFilters() {
   document.getElementById('searchBox').value = '';
   document.getElementById('teamFilter').value = '';
   loadTasks();
 }
 
-// ── EVENT LISTENERS ──
+// ── WIRE UP ──
 document.getElementById('projectSelect').addEventListener('change', loadTasks);
 document.getElementById('teamFilter').addEventListener('change', loadTasks);
-
-let searchTimer;
+let st;
 document.getElementById('searchBox').addEventListener('input', () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(loadTasks, 350);
+  clearTimeout(st); st = setTimeout(loadTasks, 400);
 });
 
-// ── INIT ──
 loadTasks();
 </script>
 </body>
