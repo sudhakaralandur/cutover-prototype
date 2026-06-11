@@ -152,19 +152,16 @@ def rc_save():
     d = request.json
     conn = db()
     if d.get('CalendarID'):
-        conn.execute("""UPDATE ResourceCalendar SET ResourceName=?,ResourceEmail=?,EffectiveFrom=?,
-            EffectiveTo=?,WorkDays=?,ShiftStart=?,ShiftEnd=?,Timezone=?,Is24x7=?,WorkingHrsCode=?,Notes=?
+        conn.execute("""UPDATE ResourceCalendar 
+            SET ResourceName=?,ResourceEmail=?,EffectiveFrom=?,EffectiveTo=?,WorkingHrsCode=?,Notes=?
             WHERE CalendarID=?""",
             [d['ResourceName'],d.get('ResourceEmail'),d['EffectiveFrom'],d['EffectiveTo'],
-             d.get('WorkDays'),d.get('ShiftStart'),d.get('ShiftEnd'),d.get('Timezone'),
-             d.get('Is24x7',0),d.get('WorkingHrsCode'),d.get('Notes'),d['CalendarID']])
+             d.get('WorkingHrsCode'),d.get('Notes'),d['CalendarID']])
     else:
-        conn.execute("""INSERT INTO ResourceCalendar(ResourceName,ResourceEmail,EffectiveFrom,EffectiveTo,
-            WorkDays,ShiftStart,ShiftEnd,Timezone,Is24x7,WorkingHrsCode,Notes)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        conn.execute("""INSERT INTO ResourceCalendar(ResourceName,ResourceEmail,EffectiveFrom,EffectiveTo,WorkingHrsCode,Notes)
+            VALUES(?,?,?,?,?,?)""",
             [d['ResourceName'],d.get('ResourceEmail'),d['EffectiveFrom'],d['EffectiveTo'],
-             d.get('WorkDays'),d.get('ShiftStart'),d.get('ShiftEnd'),d.get('Timezone'),
-             d.get('Is24x7',0),d.get('WorkingHrsCode'),d.get('Notes')])
+             d.get('WorkingHrsCode'),d.get('Notes')])
     conn.commit()
     return jsonify({'ok': True})
 
