@@ -587,27 +587,23 @@ async function renderResCalendar() {
     <div class="card-body" style="padding:0">
       <table class="grid">
         <thead><tr>
-          <th>Resource</th><th>From</th><th>To</th>
-          <th>Work Calendar</th><th>Shift</th><th>Work Days</th>
-          <th>Timezone</th><th>24x7</th><th>Notes</th><th>Actions</th>
+          <th>Resource</th><th>Email</th><th>Work Calendar</th>
+          <th>Effective From</th><th>Effective To</th><th>Notes</th><th>Actions</th>
         </tr></thead>
         <tbody>
           ${rows.length ? rows.map(r => `
           <tr>
             <td><strong>${h(r.ResourceName)}</strong></td>
+            <td>${h(r.ResourceEmail||'')}</td>
+            <td>${h(r.WorkingHrsCode||'')}</td>
             <td>${h(r.EffectiveFrom)}</td>
             <td>${h(r.EffectiveTo)}</td>
-            <td>${h(r.WorkingHrsCode||'')}</td>
-            <td>${r.ShiftStart&&r.ShiftEnd ? h(r.ShiftStart)+' – '+h(r.ShiftEnd) : r.Is24x7 ? '—' : ''}</td>
-            <td>${h(r.WorkDays||'')}</td>
-            <td>${h(r.Timezone||'')}</td>
-            <td><span class="badge ${r.Is24x7?'badge-yes':'badge-no'}">${r.Is24x7?'Yes':'No'}</span></td>
-            <td title="${h(r.Notes||'')}">${h((r.Notes||'').substring(0,30))}${(r.Notes||'').length>30?'…':''}</td>
+            <td title="${h(r.Notes||'')}">${h((r.Notes||'').substring(0,40))}${(r.Notes||'').length>40?'…':''}</td>
             <td><div class="actions">
               <button class="btn sm" onclick='openRCModal(${JSON.stringify(r)})'>Edit</button>
               <button class="btn sm danger" onclick="deleteRC(${r.CalendarID})">Del</button>
             </div></td>
-          </tr>`).join('') : '<tr><td colspan="10" class="empty-msg">No schedules yet.</td></tr>'}
+          </tr>`).join('') : '<tr><td colspan="7" class="empty-msg">No schedules yet.</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -646,21 +642,13 @@ function openRCModal(rec) {
     </div>
     <div class="form-row">
       <label>Work Calendar *</label>
-      <select id="f_rctemplate" onchange="applyWCTemplate()">
+      <select id="f_rctemplate">
         <option value="">— select calendar —</option>
         ${wcOpts}
       </select>
-      <div class="hint">Selecting a template auto-fills shift times, work days, and timezone below.</div>
     </div>
     <div class="form-row half"><label>Effective From *</label><input type="date" id="f_rcfrom" value="${h(rec.EffectiveFrom||'')}"></div>
     <div class="form-row half"><label>Effective To *</label><input type="date" id="f_rcto" value="${h(rec.EffectiveTo||'')}"></div>
-    <hr style="margin:10px 0;border:none;border-top:1px solid #eee">
-    <div style="font-size:10px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Auto-filled from template (editable)</div>
-    <div class="form-row"><label>Work Days</label><input id="f_rcdays" value="${h(rec.WorkDays||'')}" placeholder="MON,TUE,WED,THU,FRI  or  ALL"></div>
-    <div class="form-row half"><label>Shift Start</label><input id="f_rcstart" value="${h(rec.ShiftStart||'')}" placeholder="08:00"></div>
-    <div class="form-row half"><label>Shift End</label><input id="f_rcend" value="${h(rec.ShiftEnd||'')}" placeholder="17:00"></div>
-    <div class="form-row"><label>Timezone</label><select id="f_rctz">${tzOptions(rec.Timezone)}</select></div>
-    <div class="form-row"><div class="form-check"><input type="checkbox" id="f_rc247" ${rec.Is24x7?'checked':''}><label for="f_rc247">24x7 (overrides shift times and work days)</label></div></div>
     <div class="form-row"><label>Notes</label><textarea id="f_rcnotes">${h(rec.Notes||'')}</textarea></div>`;
 
   // If editing, pre-fill email
@@ -682,11 +670,6 @@ function openRCModal(rec) {
       ResourceEmail:  document.getElementById('f_rcemail').value,
       EffectiveFrom:  from,
       EffectiveTo:    to,
-      WorkDays:       document.getElementById('f_rcdays').value.trim().toUpperCase(),
-      ShiftStart:     document.getElementById('f_rcstart').value.trim(),
-      ShiftEnd:       document.getElementById('f_rcend').value.trim(),
-      Timezone:       document.getElementById('f_rctz').value,
-      Is24x7:         document.getElementById('f_rc247').checked ? 1 : 0,
       WorkingHrsCode: wcCode,
       Notes:          document.getElementById('f_rcnotes').value.trim(),
     };
@@ -701,21 +684,6 @@ function onRCResChange() {
   const sel = document.getElementById('f_rcres');
   const opt = sel.options[sel.selectedIndex];
   document.getElementById('f_rcemail').value = opt ? (opt.dataset.email || '') : '';
-}
-
-// Auto-fill shift details when work calendar is selected
-function applyWCTemplate() {
-  const sel = document.getElementById('f_rctemplate');
-  const opt = sel.options[sel.selectedIndex];
-  if (!opt || !opt.value) return;
-  document.getElementById('f_rcstart').value  = opt.dataset.start || '';
-  document.getElementById('f_rcend').value    = opt.dataset.end   || '';
-  document.getElementById('f_rcdays').value   = opt.dataset.days  || '';
-  document.getElementById('f_rc247').checked  = opt.dataset['247'] === '1';
-  if (opt.dataset.tz) {
-    const tzSel = document.getElementById('f_rctz');
-    for (const o of tzSel.options) { if (o.value === opt.dataset.tz) { o.selected = true; break; } }
-  }
 }
 
 async function deleteRC(id) {
