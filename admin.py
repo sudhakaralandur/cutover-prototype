@@ -135,7 +135,16 @@ def res_delete(rid):
 # ── STEP 5: ResourceCalendar ──────────────────────────────────
 @admin_bp.route('/api/rescalendar', methods=['GET'])
 def rc_list():
-    rows = db().execute("SELECT * FROM ResourceCalendar ORDER BY ResourceName,EffectiveFrom").fetchall()
+    client  = request.args.get('client','')
+    project = request.args.get('project','')
+    release = request.args.get('release','')
+    # Filter by resources belonging to this project
+    rows = db().execute("""
+        SELECT rc.* FROM ResourceCalendar rc
+        INNER JOIN Resources r ON rc.ResourceName = r.ResourceName
+            AND r.Client=? AND r.ProjectName=? AND r.Release=?
+        ORDER BY rc.ResourceName, rc.EffectiveFrom
+    """, [client, project, release]).fetchall()
     return jsonify([dict(r) for r in rows])
 
 @admin_bp.route('/api/rescalendar', methods=['POST'])
