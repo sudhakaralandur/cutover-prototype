@@ -245,8 +245,8 @@ function goStep(n) {
   if (s.next) { btnNext.textContent = `Next: ${s.next} →`; btnNext.style.display = ''; }
   else          { btnNext.style.display = 'none'; }
 
-  // Show project bar for steps 3 & 4
-  document.getElementById('projBar').style.display = (n === 3 || n === 4) ? '' : 'none';
+  // Show project bar for steps 3, 4 & 5
+  document.getElementById('projBar').style.display = (n === 3 || n === 4 || n === 5) ? '' : 'none';
 
   loadStep(n);
 }
@@ -563,36 +563,51 @@ async function deleteRes(id) {
 }
 
 // ── STEP 5: RESOURCE CALENDAR ──
+let rcResources = [];  // resources for current project context
+
 async function renderResCalendar() {
-  const [rows, wcs] = await Promise.all([
-    api('/admin/api/rescalendar'),
+  if (!ctxProject) {
+    document.getElementById('stepContent').innerHTML = '<div class="empty-msg">Select a project above to manage resource calendars.</div>';
+    return;
+  }
+  const [rows, wcs, ress] = await Promise.all([
+    api(`/admin/api/rescalendar?client=${enc(ctxClient)}&project=${enc(ctxProject)}&release=${enc(ctxRelease)}`),
     api('/admin/api/wccodes'),
+    api(`/admin/api/resources?client=${enc(ctxClient)}&project=${enc(ctxProject)}&release=${enc(ctxRelease)}`),
   ]);
-  wcCodes = wcs;
+  wcCodes     = wcs;
+  rcResources = ress;
+
   document.getElementById('stepContent').innerHTML = `
   <div class="card">
     <div class="card-header">
-      <h3>Resource Schedules (${rows.length})</h3>
+      <h3>Resource Schedules — ${h(ctxProject)} · ${h(ctxRelease)} (${rows.length})</h3>
       <button class="btn primary sm" onclick="openRCModal()">+ Add Schedule</button>
     </div>
     <div class="card-body" style="padding:0">
       <table class="grid">
-        <thead><tr><th>Resource</th><th>From</th><th>To</th><th>Work Days</th><th>Shift</th><th>Timezone</th><th>24x7</th><th>Template</th><th>Actions</th></tr></thead>
+        <thead><tr>
+          <th>Resource</th><th>From</th><th>To</th>
+          <th>Work Calendar</th><th>Shift</th><th>Work Days</th>
+          <th>Timezone</th><th>24x7</th><th>Notes</th><th>Actions</th>
+        </tr></thead>
         <tbody>
           ${rows.length ? rows.map(r => `
           <tr>
             <td><strong>${h(r.ResourceName)}</strong></td>
-            <td>${h(r.EffectiveFrom)}</td><td>${h(r.EffectiveTo)}</td>
+            <td>${h(r.EffectiveFrom)}</td>
+            <td>${h(r.EffectiveTo)}</td>
+            <td>${h(r.WorkingHrsCode||'')}</td>
+            <td>${r.ShiftStart&&r.ShiftEnd ? h(r.ShiftStart)+' – '+h(r.ShiftEnd) : r.Is24x7 ? '—' : ''}</td>
             <td>${h(r.WorkDays||'')}</td>
-            <td>${r.ShiftStart&&r.ShiftEnd ? h(r.ShiftStart)+' – '+h(r.ShiftEnd) : ''}</td>
             <td>${h(r.Timezone||'')}</td>
             <td><span class="badge ${r.Is24x7?'badge-yes':'badge-no'}">${r.Is24x7?'Yes':'No'}</span></td>
-            <td>${h(r.WorkingHrsCode||'')}</td>
+            <td title="${h(r.Notes||'')}">${h((r.Notes||'').substring(0,30))}${(r.Notes||'').length>30?'…':''}</td>
             <td><div class="actions">
               <button class="btn sm" onclick='openRCModal(${JSON.stringify(r)})'>Edit</button>
               <button class="btn sm danger" onclick="deleteRC(${r.CalendarID})">Del</button>
             </div></td>
-          </tr>`).join('') : '<tr><td colspan="9" class="empty-msg">No schedules yet.</td></tr>'}
+          </tr>`).join('') : '<tr><td colspan="10" class="empty-msg">No schedules yet.</td></tr>'}
         </tbody>
       </table>
     </div>
@@ -602,59 +617,105 @@ async function renderResCalendar() {
 function openRCModal(rec) {
   rec = rec || {};
   document.getElementById('modalTitle').textContent = rec.CalendarID ? 'Edit Schedule' : 'Add Schedule';
+
+  // Build resource options
+  const resOpts = rcResources.map(r =>
+    `<option value="${h(r.ResourceName)}" data-email="${h(r.ResourceEmail||'')}"
+      ${rec.ResourceName===r.ResourceName?'selected':''}>${h(r.ResourceName)}</option>`
+  ).join('');
+
+  // Build work calendar options (required)
+  const wcOpts = wcCodes.map(w =>
+    `<option value="${h(w.WorkingHrsCode)}" ${rec.WorkingHrsCode===w.WorkingHrsCode?'selected':''}
+      data-start="${h(w.ShiftStart||'')}" data-end="${h(w.ShiftEnd||'')}"
+      data-days="${h(w.WorkDays||'')}" data-tz="${h(w.Timezone||'')}" data-247="${w.Is24x7}">
+      ${h(w.WorkingHrsCode)} — ${h(w.Description||'')}</option>`
+  ).join('');
+
   document.getElementById('modalBody').innerHTML = `
-    <div class="form-row"><label>Resource Name *</label><input id="f_rcres" value="${h(rec.ResourceName||'')}"></div>
-    <div class="form-row"><label>Resource Email</label><input id="f_rcemail" value="${h(rec.ResourceEmail||'')}"></div>
     <div class="form-row">
-      <label>Use Template (optional — auto-fills shift times)</label>
-      <select id="f_rctemplate" onchange="applyWCTemplate()">
-        <option value="">— manual entry —</option>
-        ${wcCodes.map(w=>`<option value="${h(w.WorkingHrsCode)}" ${rec.WorkingHrsCode===w.WorkingHrsCode?'selected':''}>${h(w.WorkingHrsCode)} — ${h(w.Description||'')}</option>`).join('')}
+      <label>Resource *</label>
+      <select id="f_rcres" onchange="onRCResChange()">
+        <option value="">— select resource —</option>
+        ${resOpts}
       </select>
+    </div>
+    <div class="form-row">
+      <label>Email (auto-filled)</label>
+      <input id="f_rcemail" value="${h(rec.ResourceEmail||'')}" readonly style="background:#f4f5f8;color:#888">
+    </div>
+    <div class="form-row">
+      <label>Work Calendar *</label>
+      <select id="f_rctemplate" onchange="applyWCTemplate()">
+        <option value="">— select calendar —</option>
+        ${wcOpts}
+      </select>
+      <div class="hint">Selecting a template auto-fills shift times, work days, and timezone below.</div>
     </div>
     <div class="form-row half"><label>Effective From *</label><input type="date" id="f_rcfrom" value="${h(rec.EffectiveFrom||'')}"></div>
     <div class="form-row half"><label>Effective To *</label><input type="date" id="f_rcto" value="${h(rec.EffectiveTo||'')}"></div>
+    <hr style="margin:10px 0;border:none;border-top:1px solid #eee">
+    <div style="font-size:10px;color:#888;margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Auto-filled from template (editable)</div>
     <div class="form-row"><label>Work Days</label><input id="f_rcdays" value="${h(rec.WorkDays||'')}" placeholder="MON,TUE,WED,THU,FRI  or  ALL"></div>
     <div class="form-row half"><label>Shift Start</label><input id="f_rcstart" value="${h(rec.ShiftStart||'')}" placeholder="08:00"></div>
     <div class="form-row half"><label>Shift End</label><input id="f_rcend" value="${h(rec.ShiftEnd||'')}" placeholder="17:00"></div>
     <div class="form-row"><label>Timezone</label><select id="f_rctz">${tzOptions(rec.Timezone)}</select></div>
-    <div class="form-row"><div class="form-check"><input type="checkbox" id="f_rc247" ${rec.Is24x7?'checked':''}><label for="f_rc247">24x7</label></div></div>
+    <div class="form-row"><div class="form-check"><input type="checkbox" id="f_rc247" ${rec.Is24x7?'checked':''}><label for="f_rc247">24x7 (overrides shift times and work days)</label></div></div>
     <div class="form-row"><label>Notes</label><textarea id="f_rcnotes">${h(rec.Notes||'')}</textarea></div>`;
+
+  // If editing, pre-fill email
+  if (rec.ResourceEmail) document.getElementById('f_rcemail').value = rec.ResourceEmail;
+
   modalSaveFn = async () => {
+    const resName = document.getElementById('f_rcres').value;
+    const wcCode  = document.getElementById('f_rctemplate').value;
+    if (!resName)  { toast('Resource is required', true); return; }
+    if (!wcCode)   { toast('Work Calendar is required', true); return; }
+    const from = document.getElementById('f_rcfrom').value;
+    const to   = document.getElementById('f_rcto').value;
+    if (!from || !to) { toast('Effective From and To are required', true); return; }
+    if (from > to)    { toast('Effective From must be before To', true); return; }
+
     const d = {
       CalendarID:     rec.CalendarID || null,
-      ResourceName:   document.getElementById('f_rcres').value.trim(),
-      ResourceEmail:  document.getElementById('f_rcemail').value.trim(),
-      EffectiveFrom:  document.getElementById('f_rcfrom').value,
-      EffectiveTo:    document.getElementById('f_rcto').value,
+      ResourceName:   resName,
+      ResourceEmail:  document.getElementById('f_rcemail').value,
+      EffectiveFrom:  from,
+      EffectiveTo:    to,
       WorkDays:       document.getElementById('f_rcdays').value.trim().toUpperCase(),
       ShiftStart:     document.getElementById('f_rcstart').value.trim(),
       ShiftEnd:       document.getElementById('f_rcend').value.trim(),
       Timezone:       document.getElementById('f_rctz').value,
       Is24x7:         document.getElementById('f_rc247').checked ? 1 : 0,
-      WorkingHrsCode: document.getElementById('f_rctemplate').value || null,
+      WorkingHrsCode: wcCode,
       Notes:          document.getElementById('f_rcnotes').value.trim(),
     };
-    if (!d.ResourceName || !d.EffectiveFrom || !d.EffectiveTo) { toast('Resource, From, To are required', true); return; }
     await api('/admin/api/rescalendar', 'POST', d);
     toast('Saved'); closeModal(); renderResCalendar();
   };
   openModal();
 }
 
+// Auto-fill email when resource is selected
+function onRCResChange() {
+  const sel = document.getElementById('f_rcres');
+  const opt = sel.options[sel.selectedIndex];
+  document.getElementById('f_rcemail').value = opt ? (opt.dataset.email || '') : '';
+}
+
+// Auto-fill shift details when work calendar is selected
 function applyWCTemplate() {
-  const code = document.getElementById('f_rctemplate').value;
-  if (!code) return;
-  const wc = wcCodes.find(w => w.WorkingHrsCode === code);
-  if (!wc) return;
-  if (wc.ShiftStart) document.getElementById('f_rcstart').value = wc.ShiftStart;
-  if (wc.ShiftEnd)   document.getElementById('f_rcend').value   = wc.ShiftEnd;
-  if (wc.WorkDays)   document.getElementById('f_rcdays').value  = wc.WorkDays;
-  if (wc.Timezone) {
-    const sel = document.getElementById('f_rctz');
-    for (const o of sel.options) { if (o.value === wc.Timezone) { o.selected = true; break; } }
+  const sel = document.getElementById('f_rctemplate');
+  const opt = sel.options[sel.selectedIndex];
+  if (!opt || !opt.value) return;
+  document.getElementById('f_rcstart').value  = opt.dataset.start || '';
+  document.getElementById('f_rcend').value    = opt.dataset.end   || '';
+  document.getElementById('f_rcdays').value   = opt.dataset.days  || '';
+  document.getElementById('f_rc247').checked  = opt.dataset['247'] === '1';
+  if (opt.dataset.tz) {
+    const tzSel = document.getElementById('f_rctz');
+    for (const o of tzSel.options) { if (o.value === opt.dataset.tz) { o.selected = true; break; } }
   }
-  document.getElementById('f_rc247').checked = !!wc.Is24x7;
 }
 
 async function deleteRC(id) {
