@@ -210,3 +210,192 @@ def projlist():
 def wccodes():
     rows = db().execute("SELECT WorkingHrsCode,Description FROM WorkCalendar ORDER BY WorkingHrsCode").fetchall()
     return jsonify([dict(r) for r in rows])
+
+# ── STEP 7: Tasks ─────────────────────────────────────────────
+@admin_bp.route('/api/tasks/list', methods=['GET'])
+def tasks_list():
+    client  = request.args.get('client','')
+    project = request.args.get('project','')
+    release = request.args.get('release','')
+    rows = db().execute("""
+        SELECT TaskID,UniqueID,WBS,TaskDesc,Duration,StartDateTime,FinishDateTime,
+               PerComplete,ResourceName,TeamName,Predecessor,Successors,Notes,
+               BaselineStartDateTime,BaselineFinishDateTime,
+               WorkCalendarOverride,ScheduleType
+        FROM Tasks WHERE Client=? AND ProjectName=? AND Release=?
+        ORDER BY TaskID
+    """, [client,project,release]).fetchall()
+
+    wbs_list = [str(r['WBS']) for r in rows]
+    tasks = []
+    for i, r in enumerate(rows):
+        wbs    = str(r['WBS']) if r['WBS'] else ''
+        is_hdr = any(w != wbs and w.startswith(wbs+'.') for w in wbs_list)
+        tasks.append({
+            'taskId':              r['TaskID'],
+            'uniqueId':            r['UniqueID'],
+            'rowNum':              i + 1,
+            'wbs':                 wbs,
+            'depth':               wbs.count('.'),
+            'isHeader':            is_hdr,
+            'taskDesc':            r['TaskDesc'] or '',
+            'duration':            r['Duration'] or 0,
+            'start':               r['StartDateTime'] or '',
+            'finish':              r['FinishDateTime'] or '',
+            'pctComplete':         r['PerComplete'] or 0,
+            'resource':            r['ResourceName'] or '',
+            'team':                r['TeamName'] or '',
+            'predecessor':         r['Predecessor'] or '',
+            'successors':          r['Successors'] or '',
+            'notes':               r['Notes'] or '',
+            'wcOverride':          r['WorkCalendarOverride'] or '',
+            'scheduleType':        r['ScheduleType'] or 'Auto',
+        })
+    return jsonify(tasks)
+
+@admin_bp.route('/api/tasks/save', methods=['POST'])
+def tasks_save():
+    """Save a single task (insert or update)."""
+    from scheduler import compute_finish, validate_task_calendar
+    d = request.json
+
+    # Validate calendar for Auto tasks
+    if d.get('scheduleType') != 'Manual':
+        err = validate_task_calendar({
+            'ScheduleType':          d.get('scheduleType','Auto'),
+            'WorkCalendarOverride':  d.get('wcOverride',''),
+            'ResourceName':          d.get('resource',''),
+            'StartDateTime':         d.get('start',''),
+            'FinishDateTime':        d.get('finish',''),
+        })
+        if err:
+            return jsonify({'ok': False, 'error': err}), 400
+
+        # Recalculate finish if start + duration provided
+        if d.get('start') and d.get('duration'):
+            finish, err = compute_finish({
+                'ScheduleType':         d.get('scheduleType','Auto'),
+                'WorkCalendarOverride': d.get('wcOverride',''),
+                'ResourceName':         d.get('resource',''),
+                'StartDateTime':        d.get('start',''),
+                'Duration':             d.get('duration',0),
+            })
+            if err:
+                return jsonify({'ok': False, 'error': err}), 400
+            d['finish'] = finish
+
+    conn = db()
+    client  = d['client']
+    project = d['project']
+    release = d['release']
+
+    if d.get('taskId'):
+        conn.execute("""
+            UPDATE Tasks SET TaskDesc=?,Duration=?,StartDateTime=?,FinishDateTime=?,
+            PerComplete=?,ResourceName=?,TeamName=?,Predecessor=?,Successors=?,Notes=?,
+            WorkCalendarOverride=?,ScheduleType=?
+            WHERE TaskID=?
+        """, [d.get('taskDesc'),d.get('duration'),d.get('start'),d.get('finish'),
+              d.get('pctComplete',0),d.get('resource'),d.get('team'),
+              d.get('predecessor'),d.get('successors'),d.get('notes'),
+              d.get('wcOverride') or None, d.get('scheduleType','Auto'),
+              d['taskId']])
+    else:
+        # New task — get next UniqueID from NumberRange
+        conn2 = db()
+        nr = conn2.execute(
+            "SELECT RangeKey,LastUsedNumber FROM NumberRange WHERE Client=? AND ProjectName=? AND Release=?",
+            [client,project,release]
+        ).fetchone()
+        next_id = (nr['LastUsedNumber'] + 1) if nr else 1
+        range_key = nr['RangeKey'] if nr else 'NEW'
+
+        conn.execute("""
+            INSERT INTO Tasks(Client,ProjectName,Release,UniqueID,WBS,TaskDesc,Duration,
+            StartDateTime,FinishDateTime,PerComplete,ResourceName,TeamName,
+            Predecessor,Successors,Notes,WorkCalendarOverride,ScheduleType)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, [client,project,release,next_id,d.get('wbs',''),
+              d.get('taskDesc'),d.get('duration',0),d.get('start'),d.get('finish'),
+              d.get('pctComplete',0),d.get('resource'),d.get('team'),
+              d.get('predecessor'),d.get('successors'),d.get('notes'),
+              d.get('wcOverride') or None, d.get('scheduleType','Auto')])
+
+        conn.execute(
+            "UPDATE NumberRange SET LastUsedNumber=? WHERE RangeKey=?",
+            [next_id, range_key]
+        )
+        task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        d['taskId'] = task_id
+
+    conn.commit()
+    return jsonify({'ok': True, 'taskId': d.get('taskId'), 'finish': d.get('finish')})
+
+@admin_bp.route('/api/tasks/delete', methods=['POST'])
+def tasks_delete():
+    """Delete one or more tasks (with children check)."""
+    d       = request.json
+    ids     = d.get('taskIds', [])
+    force   = d.get('force', False)
+    conn    = db()
+
+    if not force:
+        # Check for children
+        wbs_rows = conn.execute(
+            f"SELECT TaskID,WBS FROM Tasks WHERE TaskID IN ({','.join('?'*len(ids))})", ids
+        ).fetchall()
+        all_wbs = [r['WBS'] for r in wbs_rows]
+        # Check if any other task's WBS starts with one of these
+        placeholders = ','.join('?' * len(ids))
+        children = conn.execute(
+            f"SELECT COUNT(*) as cnt FROM Tasks WHERE TaskID NOT IN ({placeholders}) AND ({' OR '.join(['WBS LIKE ?']*len(all_wbs))})",
+            ids + [str(w)+'%' for w in all_wbs]
+        ).fetchone()
+        if children and children['cnt'] > 0:
+            return jsonify({'ok': False, 'hasChildren': True,
+                'message': f"One or more selected tasks have children. Delete all {children['cnt']} child tasks too?"})
+
+    conn.execute(f"DELETE FROM Tasks WHERE TaskID IN ({','.join('?'*len(ids))})", ids)
+    conn.commit()
+    return jsonify({'ok': True})
+
+@admin_bp.route('/api/tasks/reorder', methods=['POST'])
+def tasks_reorder():
+    """
+    Update WBS for all tasks after indent/outdent/insert/delete.
+    Receives full ordered list of {taskId, wbs}.
+    """
+    d    = request.json
+    rows = d.get('tasks', [])
+    conn = db()
+    for r in rows:
+        conn.execute("UPDATE Tasks SET WBS=? WHERE TaskID=?", [r['wbs'], r['taskId']])
+    conn.commit()
+    return jsonify({'ok': True})
+
+@admin_bp.route('/api/tasks/compute_finish', methods=['POST'])
+def tasks_compute_finish():
+    """Compute finish datetime for a task given start + duration + calendar."""
+    from scheduler import compute_finish, get_successor_start
+    d = request.json
+
+    if d.get('predecessorFinish') and d.get('resource'):
+        start, err = get_successor_start(
+            d['predecessorFinish'],
+            d['resource'].split(',')[0].strip(),
+            d.get('wcOverride')
+        )
+        if err:
+            return jsonify({'ok': False, 'error': err}), 400
+        d['start'] = start
+
+    finish, err = compute_finish({
+        'ScheduleType':         d.get('scheduleType','Auto'),
+        'WorkCalendarOverride': d.get('wcOverride',''),
+        'ResourceName':         d.get('resource',''),
+        'StartDateTime':        d.get('start',''),
+        'Duration':             d.get('duration',0),
+    })
+    if err:
+        return jsonify({'ok': False, 'error': err}), 400
+    return jsonify({'ok': True, 'start': d.get('start'), 'finish': finish})
