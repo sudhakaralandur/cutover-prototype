@@ -246,7 +246,13 @@ function goStep(n) {
   else          { btnNext.style.display = 'none'; }
 
   // Show project bar for steps 3, 4, 5 & 7
-  document.getElementById('projBar').style.display = (n === 3 || n === 4 || n === 5 || n === 7) ? '' : 'none';
+  const showProjBar = (n === 3 || n === 4 || n === 5 || n === 7);
+  document.getElementById('projBar').style.display = showProjBar ? '' : 'none';
+  // Ensure project context is set when proj bar becomes visible
+  if (showProjBar && !ctxProject) {
+    const sel = document.getElementById('ctxProject');
+    if (sel.value) { onCtxChange(); }
+  }
 
   loadStep(n);
 }
