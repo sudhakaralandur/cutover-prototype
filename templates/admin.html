@@ -1209,6 +1209,12 @@ function fmtDtDisplay(val) {
   } catch { return val; }
 }
 
+function badgeCls(t) {
+  return {'PMO':'b-PMO','EWM':'b-EWM','FTM':'b-FTM','SEC':'b-SEC',
+    'BASIS':'b-BASIS','DATA':'b-DATA','BI':'b-BI','INT':'b-INT',
+    'OTC':'b-OTC','TM':'b-TM','DTS':'b-DTS','PTP':'b-PTP','LE':'b-LE'}[t] || 'b-def';
+}
+
 function makeTd2(text, style) {
   const td = document.createElement('td');
   td.textContent = text ?? '';
