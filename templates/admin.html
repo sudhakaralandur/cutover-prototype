@@ -1002,28 +1002,49 @@ async function t7ModalSave(taskId) {
   const schedFields = ['scheduleType','duration','start','finish','resource','wcOverride'];
   schedFields.forEach(f => { if (task[f] !== prev[f]) t7ChangedFields[taskId].add(f); });
 
-  // Auto-calculate finish for Auto tasks
-  if (task.scheduleType !== 'Manual' && task.start && task.duration > 0 && (task.resource || task.wcOverride)) {
+  // Auto-calculate start from predecessor finish, then calc finish from duration
+  if (task.scheduleType !== 'Manual' && task.duration > 0 && (task.resource || task.wcOverride)) {
     try {
-      const res = await api('/admin/api/tasks/compute_finish', 'POST', {
+      const payload = {
         scheduleType: task.scheduleType,
         wcOverride:   task.wcOverride,
         resource:     task.resource,
-        start:        task.start,
         duration:     task.duration,
-      });
-      if (res.ok) {
-        task.finish = res.finish;
-        document.getElementById('t7_finish').value = fmtDtEdit(res.finish);
-        // Brief flash to show calculated value
-        await new Promise(r => setTimeout(r, 300));
-      } else {
-        toast(res.error, true);
-        // Restore previous values
-        Object.assign(task, prev);
-        return;
+      };
+
+      // If predecessor set and no manual start — derive start from predecessor finish
+      if (task.predecessor && !task.start) {
+        const predNums = task.predecessor.split(',').map(s => parseInt(s.trim()));
+        // Find the latest finish among all predecessors
+        let latestFinish = null;
+        for (const pNum of predNums) {
+          const predTask = t7Tasks[pNum - 1];  // rowNum is 1-based
+          if (predTask && predTask.finish) {
+            if (!latestFinish || predTask.finish > latestFinish) {
+              latestFinish = predTask.finish;
+            }
+          }
+        }
+        if (latestFinish) payload.predecessorFinish = latestFinish;
+        else if (task.start) payload.start = task.start;
+      } else if (task.start) {
+        payload.start = task.start;
       }
-    } catch(e) { /* silent */ }
+
+      if (payload.start || payload.predecessorFinish) {
+        const res = await api('/admin/api/tasks/compute_finish', 'POST', payload);
+        if (res.ok) {
+          task.start  = res.start  || task.start;
+          task.finish = res.finish || task.finish;
+          document.getElementById('t7_start').value  = fmtDtEdit(task.start);
+          document.getElementById('t7_finish').value = fmtDtEdit(task.finish);
+        } else {
+          toast(res.error, true);
+          Object.assign(task, prev);
+          return;
+        }
+      }
+    } catch(e) { toast('Calculation error: ' + e.message, true); }
   }
 
   t7Dirty.add(taskId);
@@ -1165,10 +1186,14 @@ async function t7SaveAll() {
   document.getElementById('btnSaveAll').textContent = '💾 Save All';
   if (errors.length) {
     toast(`${errors.length} error(s): ${errors[0]}`, true);
+    renderT7Rows();
   } else {
     toast(`Saved ${dirty.length} task(s)`);
-    document.getElementById('t7DirtyMsg').style.display = 'none';
-    renderT7Rows();
+    // Re-fetch from server to get clean state
+    const fresh = await api(`/admin/api/tasks/list?client=${enc(ctxClient)}&project=${enc(ctxProject)}&release=${enc(ctxRelease)}`);
+    t7Tasks = fresh;
+    t7Dirty.clear();
+    renderTaskGrid();
   }
 }
 
