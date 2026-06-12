@@ -259,20 +259,26 @@ def tasks_save():
     from scheduler import compute_finish, validate_task_calendar
     d = request.json
 
-    # Validate calendar for Auto tasks
-    if d.get('scheduleType') != 'Manual':
-        err = validate_task_calendar({
-            'ScheduleType':          d.get('scheduleType','Auto'),
-            'WorkCalendarOverride':  d.get('wcOverride',''),
-            'ResourceName':          d.get('resource',''),
-            'StartDateTime':         d.get('start',''),
-            'FinishDateTime':        d.get('finish',''),
-        })
-        if err:
-            return jsonify({'ok': False, 'error': err}), 400
+    # Validate/compute only when start + resource/override both present
+    has_start    = bool(d.get('start'))
+    has_resource = bool(d.get('resource') or d.get('wcOverride'))
+    has_duration = int(d.get('duration') or 0) > 0
 
-        # Recalculate finish if start + duration provided
-        if d.get('start') and d.get('duration'):
+    if d.get('scheduleType') != 'Manual' and has_start and has_resource:
+        # Validate full date range only when finish is also present
+        if d.get('finish'):
+            err = validate_task_calendar({
+                'ScheduleType':         d.get('scheduleType','Auto'),
+                'WorkCalendarOverride': d.get('wcOverride',''),
+                'ResourceName':         d.get('resource',''),
+                'StartDateTime':        d.get('start',''),
+                'FinishDateTime':       d.get('finish',''),
+            })
+            if err:
+                return jsonify({'ok': False, 'error': err}), 400
+
+        # Recalculate finish if duration present
+        if has_duration:
             finish, err = compute_finish({
                 'ScheduleType':         d.get('scheduleType','Auto'),
                 'WorkCalendarOverride': d.get('wcOverride',''),
