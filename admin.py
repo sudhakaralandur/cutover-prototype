@@ -259,13 +259,17 @@ def tasks_save():
     from scheduler import compute_finish, validate_task_calendar
     d = request.json
 
-    # Validate/compute only when start + resource/override both present
+    # Only validate/recalculate when user changed scheduling-relevant fields
+    sched_fields = {'start','finish','duration','resource','wcOverride','scheduleType'}
+    changed = set(d.get('changedFields', []))
+    sched_changed = bool(changed & sched_fields)
+
     has_start    = bool(d.get('start'))
     has_resource = bool(d.get('resource') or d.get('wcOverride'))
     has_duration = int(d.get('duration') or 0) > 0
 
-    if d.get('scheduleType') != 'Manual' and has_start and has_resource:
-        # Validate full date range only when finish is also present
+    if sched_changed and d.get('scheduleType') != 'Manual' and has_start and has_resource:
+        # Validate full date range when finish present
         if d.get('finish'):
             err = validate_task_calendar({
                 'ScheduleType':         d.get('scheduleType','Auto'),
@@ -278,7 +282,7 @@ def tasks_save():
                 return jsonify({'ok': False, 'error': err}), 400
 
         # Recalculate finish if duration present
-        if has_duration:
+        if has_duration and 'finish' not in changed:
             finish, err = compute_finish({
                 'ScheduleType':         d.get('scheduleType','Auto'),
                 'WorkCalendarOverride': d.get('wcOverride',''),
