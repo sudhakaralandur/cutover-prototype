@@ -952,6 +952,9 @@ function makeEditTd(taskId, field, value, type, options) {
 }
 
 // ── FIELD CHANGE ──
+// Track which fields changed per task
+const t7ChangedFields = {};
+
 async function t7FieldChanged(taskId, field, value) {
   const task = t7Tasks.find(t => t.taskId === taskId);
   if (!task) return;
@@ -960,6 +963,10 @@ async function t7FieldChanged(taskId, field, value) {
   if (field === 'duration' || field === 'pctComplete') value = parseFloat(value) || 0;
   task[field] = value;
   t7Dirty.add(taskId);
+
+  // Track changed fields
+  if (!t7ChangedFields[taskId]) t7ChangedFields[taskId] = new Set();
+  t7ChangedFields[taskId].add(field);
 
   // If Auto task: recalculate finish when start or duration changes
   if (task.scheduleType !== 'Manual' && (field === 'start' || field === 'duration' || field === 'wcOverride' || field === 'resource')) {
@@ -1190,23 +1197,24 @@ async function t7SaveAll() {
   for (const task of dirtyTasks) {
     try {
       const payload = {
-        taskId:      String(task.taskId).startsWith('new_') ? null : task.taskId,
-        client:      ctxClient,
-        project:     ctxProject,
-        release:     ctxRelease,
-        wbs:         task.wbs,
-        taskDesc:    task.taskDesc,
-        duration:    task.duration,
-        start:       task.start,
-        finish:      task.finish,
-        pctComplete: task.pctComplete,
-        resource:    task.resource,
-        team:        task.team,
-        predecessor: task.predecessor,
-        successors:  task.successors,
-        notes:       task.notes,
-        wcOverride:  task.wcOverride,
-        scheduleType:task.scheduleType,
+        taskId:       String(task.taskId).startsWith('new_') ? null : task.taskId,
+        client:       ctxClient,
+        project:      ctxProject,
+        release:      ctxRelease,
+        wbs:          task.wbs,
+        taskDesc:     task.taskDesc,
+        duration:     task.duration,
+        start:        task.start,
+        finish:       task.finish,
+        pctComplete:  task.pctComplete,
+        resource:     task.resource,
+        team:         task.team,
+        predecessor:  task.predecessor,
+        successors:   task.successors,
+        notes:        task.notes,
+        wcOverride:   task.wcOverride,
+        scheduleType: task.scheduleType,
+        changedFields: [...(t7ChangedFields[task.taskId] || new Set())],
       };
       const res = await api('/admin/api/tasks/save', 'POST', payload);
       if (res.ok) {
@@ -1214,6 +1222,7 @@ async function t7SaveAll() {
         if (String(task.taskId).startsWith('new_')) task.taskId = res.taskId;
         if (res.finish) task.finish = res.finish;
         t7Dirty.delete(task.taskId);
+        delete t7ChangedFields[task.taskId];
       } else {
         errors.push(`Row ${task.wbs}: ${res.error}`);
       }
