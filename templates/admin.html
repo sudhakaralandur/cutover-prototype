@@ -751,13 +751,13 @@ async function deleteHol(id) {
 }
 
 // ── STEP 7: TASKS ──
-let t7Tasks     = [];   // full task array
-let t7Selected  = new Set();  // selected taskIds
-let t7Editing   = null; // {taskId, field} currently editing
+let t7Tasks     = [];
+let t7Selected  = new Set();
 let t7WCCodes   = [];
 let t7Teams     = [];
 let t7Resources = [];
-let t7Dirty     = new Set(); // taskIds with unsaved changes
+let t7Dirty     = new Set();
+const t7ChangedFields = {};
 
 async function renderTasksPlaceholder() {
   if (!ctxProject) {
@@ -779,63 +779,54 @@ async function renderTasksPlaceholder() {
 }
 
 function renderTaskGrid() {
-  const c = document.getElementById('stepContent');
-  c.innerHTML = `
+  document.getElementById('stepContent').innerHTML = `
   <div style="display:flex;flex-direction:column;height:100%;gap:0">
-    <!-- TASK TOOLBAR -->
     <div style="background:#fff;border:1px solid #dde1ea;border-radius:5px 5px 0 0;padding:7px 12px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
       <button class="btn primary sm" onclick="t7AddTask()">+ Add Task</button>
       <button class="btn sm danger" onclick="t7DeleteSelected()">Delete</button>
       <div style="width:1px;height:20px;background:#dde;margin:0 4px"></div>
-      <button class="btn sm" onclick="t7Indent()" title="Indent selected">→ Indent</button>
-      <button class="btn sm" onclick="t7Outdent()" title="Outdent selected">← Outdent</button>
+      <button class="btn sm" onclick="t7Indent()">→ Indent</button>
+      <button class="btn sm" onclick="t7Outdent()">← Outdent</button>
       <div style="width:1px;height:20px;background:#dde;margin:0 4px"></div>
       <button class="btn sm success" onclick="t7SaveAll()" id="btnSaveAll">💾 Save All</button>
       <span id="t7DirtyMsg" style="font-size:10px;color:#c0392b;display:none">● Unsaved changes</span>
-      <div style="margin-left:auto;font-size:11px;color:#666">
-        <span id="t7Stats">${t7Tasks.length} tasks</span>
-      </div>
+      <div style="margin-left:auto;font-size:11px;color:#666"><span id="t7Stats">${t7Tasks.length} tasks</span></div>
     </div>
-
-    <!-- TASK GRID -->
     <div style="overflow:auto;flex:1;border:1px solid #dde1ea;border-top:none;border-radius:0 0 5px 5px">
-      <table class="grid" id="t7Table" style="min-width:1200px">
+      <table class="grid" id="t7Table" style="min-width:1100px">
         <thead>
           <tr style="position:sticky;top:0;z-index:5">
-            <th style="width:30px"><input type="checkbox" id="t7ChkAll" onchange="t7ToggleAll(this)"></th>
+            <th style="width:32px"><input type="checkbox" id="t7ChkAll" onchange="t7ToggleAll(this)"></th>
             <th style="width:40px">#</th>
-            <th style="width:60px">WBS</th>
-            <th style="width:340px">Task Name</th>
-            <th style="width:70px">Type</th>
+            <th style="width:65px">WBS</th>
+            <th>Task Name</th>
+            <th style="width:65px">Type</th>
             <th style="width:75px">Duration</th>
-            <th style="width:130px">Start</th>
-            <th style="width:130px">Finish</th>
-            <th style="width:80px">%Done</th>
-            <th style="width:160px">Resource</th>
-            <th style="width:70px">Team</th>
-            <th style="width:60px">Pred</th>
-            <th style="width:120px">WC Override</th>
-            <th style="width:80px">Notes</th>
+            <th style="width:125px">Start</th>
+            <th style="width:125px">Finish</th>
+            <th style="width:65px">% Done</th>
+            <th style="width:170px">Resource</th>
+            <th style="width:65px">Team</th>
+            <th style="width:55px">Pred</th>
+            <th style="width:40px"></th>
           </tr>
         </thead>
         <tbody id="t7Body"></tbody>
       </table>
     </div>
   </div>`;
-
   renderT7Rows();
 }
 
 function renderT7Rows() {
   const tbody = document.getElementById('t7Body');
   if (!tbody) return;
-  tbody.innerHTML = '';
   const frag = document.createDocumentFragment();
+  tbody.innerHTML = '';
 
   t7Tasks.forEach((task, idx) => {
     const tr = document.createElement('tr');
     tr.id = `t7r_${task.taskId}`;
-    tr.dataset.tid = task.taskId;
     if (t7Selected.has(task.taskId)) tr.classList.add('selected');
     if (t7Dirty.has(task.taskId))    tr.style.background = '#fffde7';
     if (task.isHeader)               tr.classList.add('header-row');
@@ -849,193 +840,191 @@ function renderT7Rows() {
     tr.appendChild(makeTd2(idx+1, 'text-align:right;color:#999;font-size:10.5px'));
 
     // WBS
-    tr.appendChild(makeTd2(task.wbs, 'font-family:monospace;font-size:11px'));
+    tr.appendChild(makeTd2(task.wbs, 'font-family:monospace;font-size:11px;color:#445'));
 
-    // Task Name (indented)
+    // Task Name indented
     const tdName = document.createElement('td');
     const pad = task.depth * 14;
     tdName.innerHTML = `<div style="display:flex;align-items:center;gap:3px;overflow:hidden">
       <span style="width:${pad}px;flex-shrink:0"></span>
       <span style="color:${task.isHeader?'#1a1a2e':'#2255aa'};font-size:9px;flex-shrink:0">${task.isHeader?'▼':'◆'}</span>
-      <span class="t7-cell" data-tid="${task.taskId}" data-field="taskDesc"
-        style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-        font-weight:${task.isHeader?700:400};cursor:text"
-        ondblclick="t7StartEdit(${task.taskId},'taskDesc',this)"
-        title="${h(task.taskDesc)}">${h(task.taskDesc)||'<span style="color:#bbb;font-style:italic">click to edit</span>'}</span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+        font-weight:${task.isHeader?700:400}" title="${h(task.taskDesc)}">${h(task.taskDesc)||'<em style="color:#bbb">—</em>'}</span>
     </div>`;
     tr.appendChild(tdName);
 
-    // Schedule Type
-    tr.appendChild(makeEditTd(task.taskId, 'scheduleType', task.scheduleType, 'select', ['Auto','Manual']));
+    // Type badge
+    const tdType = document.createElement('td');
+    tdType.innerHTML = `<span style="font-size:10px;padding:1px 5px;border-radius:3px;background:${task.scheduleType==='Manual'?'#fff2cc':'#d4e6ff'};color:${task.scheduleType==='Manual'?'#7a5c00':'#1a4499'}">${task.scheduleType||'Auto'}</span>`;
+    tr.appendChild(tdType);
 
     // Duration
-    tr.appendChild(makeEditTd(task.taskId, 'duration', task.duration, 'number'));
+    tr.appendChild(makeTd2(task.duration ? fmtDur7(task.duration) : '—', 'text-align:right;color:#334'));
 
-    // Start
-    tr.appendChild(makeEditTd(task.taskId, 'start', fmtDtEdit(task.start), 'datetime'));
+    // Start / Finish
+    tr.appendChild(makeTd2(fmtDtDisplay(task.start), 'font-size:11px;color:#334'));
+    tr.appendChild(makeTd2(fmtDtDisplay(task.finish), 'font-size:11px;color:#334'));
 
-    // Finish (editable only if Manual)
-    if (task.scheduleType === 'Manual') {
-      tr.appendChild(makeEditTd(task.taskId, 'finish', fmtDtEdit(task.finish), 'datetime'));
-    } else {
-      tr.appendChild(makeTd2(fmtDtDisplay(task.finish), 'color:#666;font-style:italic;font-size:11px'));
-    }
-
-    // % Complete
-    tr.appendChild(makeEditTd(task.taskId, 'pctComplete', task.pctComplete, 'number'));
+    // % Complete with bar
+    const tdPct = document.createElement('td');
+    const pct = task.pctComplete || 0;
+    tdPct.innerHTML = `<div style="display:flex;align-items:center;gap:4px">
+      <div style="flex:1;height:8px;background:#dde;border-radius:2px;overflow:hidden;min-width:30px">
+        <div style="height:100%;width:${Math.min(pct,100)}%;background:${pct>=100?'#27ae60':'#2a7de1'};border-radius:2px"></div>
+      </div>
+      <span style="font-size:10px;color:#555;min-width:24px">${pct}%</span>
+    </div>`;
+    tr.appendChild(tdPct);
 
     // Resource
-    tr.appendChild(makeEditTd(task.taskId, 'resource', task.resource, 'text'));
+    tr.appendChild(makeTd2(task.resource||'—', 'font-size:11px;color:#334;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'));
 
-    // Team
-    tr.appendChild(makeEditTd(task.taskId, 'team', task.team, 'select', ['', ...t7Teams]));
+    // Team badge
+    const tdTeam = document.createElement('td');
+    if (task.team) tdTeam.innerHTML = `<span class="team-badge ${badgeCls(task.team)}">${h(task.team)}</span>`;
+    tr.appendChild(tdTeam);
 
     // Predecessor
-    tr.appendChild(makeEditTd(task.taskId, 'predecessor', task.predecessor, 'text'));
+    tr.appendChild(makeTd2(task.predecessor||'', 'font-size:11px;color:#667'));
 
-    // WC Override
-    tr.appendChild(makeEditTd(task.taskId, 'wcOverride', task.wcOverride, 'select',
-      ['', ...t7WCCodes.map(w => w.WorkingHrsCode)]));
+    // Edit button
+    const tdEdit = document.createElement('td');
+    tdEdit.innerHTML = `<button class="btn sm" onclick="t7OpenModal(${task.taskId})">Edit</button>`;
+    tr.appendChild(tdEdit);
 
-    // Notes
-    tr.appendChild(makeEditTd(task.taskId, 'notes', task.notes, 'text'));
+    // Row double-click to edit
+    tr.addEventListener('dblclick', e => {
+      if (e.target.type === 'checkbox' || e.target.tagName === 'BUTTON') return;
+      t7OpenModal(task.taskId);
+    });
 
     // Row click to select
     tr.addEventListener('click', e => {
-      if (e.target.type === 'checkbox') return;
-      if (e.target.classList.contains('t7-cell')) return;
-      if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
-      t7ToggleSelect(task.taskId, null, e);
+      if (e.target.type === 'checkbox' || e.target.tagName === 'BUTTON') return;
+      t7ToggleSelect(task.taskId, null);
     });
 
     frag.appendChild(tr);
   });
-
   tbody.appendChild(frag);
 }
 
-function makeTd2(text, style) {
-  const td = document.createElement('td');
-  td.textContent = text ?? '';
-  if (style) td.style.cssText = style;
-  return td;
-}
-
-function makeEditTd(taskId, field, value, type, options) {
-  const td = document.createElement('td');
-  td.className = 't7-edit-td';
-  td.dataset.tid   = taskId;
-  td.dataset.field = field;
-
-  if (type === 'select') {
-    const sel = document.createElement('select');
-    sel.style.cssText = 'width:100%;font-size:11px;padding:2px 4px;border:1px solid #dde;border-radius:2px;background:#fff';
-    (options||[]).forEach(o => {
-      const opt = document.createElement('option');
-      opt.value = o; opt.textContent = o || '—';
-      if (String(value) === String(o)) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    sel.addEventListener('change', () => t7FieldChanged(taskId, field, sel.value));
-    td.appendChild(sel);
-  } else {
-    const inp = document.createElement('input');
-    inp.type  = type === 'datetime' ? 'datetime-local' : (type === 'number' ? 'number' : 'text');
-    inp.value = value ?? '';
-    inp.style.cssText = 'width:100%;font-size:11px;padding:2px 4px;border:1px solid #dde;border-radius:2px';
-    if (type === 'number') { inp.min = 0; inp.style.textAlign = 'right'; }
-    inp.addEventListener('change', () => t7FieldChanged(taskId, field, inp.value));
-    inp.addEventListener('blur',   () => t7FieldChanged(taskId, field, inp.value));
-    td.appendChild(inp);
-  }
-  return td;
-}
-
-// ── FIELD CHANGE ──
-// Track which fields changed per task
-const t7ChangedFields = {};
-
-async function t7FieldChanged(taskId, field, value) {
+// ── TASK MODAL ──
+function t7OpenModal(taskId) {
   const task = t7Tasks.find(t => t.taskId === taskId);
   if (!task) return;
 
-  // Convert types
-  if (field === 'duration' || field === 'pctComplete') value = parseFloat(value) || 0;
-  task[field] = value;
-  t7Dirty.add(taskId);
+  const resOpts = ['', ...t7Resources.map(r => r.ResourceName)]
+    .map(r => `<option value="${h(r)}" ${task.resource===r?'selected':''}>${r||'— none —'}</option>`).join('');
+  const wcOpts = ['', ...t7WCCodes.map(w => w.WorkingHrsCode)]
+    .map(w => `<option value="${h(w)}" ${task.wcOverride===w?'selected':''}>${w||'— none —'}</option>`).join('');
+  const teamOpts = ['', ...t7Teams]
+    .map(t => `<option value="${h(t)}" ${task.team===t?'selected':''}>${t||'— none —'}</option>`).join('');
+
+  document.getElementById('modalTitle').textContent = `Edit Task — WBS ${task.wbs}`;
+  document.getElementById('modalBody').innerHTML = `
+    <div class="form-row"><label>Task Description</label>
+      <textarea id="t7_desc" rows="2">${h(task.taskDesc)}</textarea></div>
+    <div class="form-row half"><label>Schedule Type</label>
+      <select id="t7_stype" onchange="t7ModalTypeChange()">
+        <option value="Auto" ${task.scheduleType!=='Manual'?'selected':''}>Auto</option>
+        <option value="Manual" ${task.scheduleType==='Manual'?'selected':''}>Manual</option>
+      </select></div>
+    <div class="form-row half"><label>% Complete</label>
+      <input type="number" id="t7_pct" value="${task.pctComplete||0}" min="0" max="100"></div>
+    <div class="form-row half"><label>Duration (mins)</label>
+      <input type="number" id="t7_dur" value="${task.duration||0}" min="0"></div>
+    <div class="form-row half"><label>Predecessor (row #)</label>
+      <input type="text" id="t7_pred" value="${h(task.predecessor||'')}"></div>
+    <div class="form-row half"><label>Start</label>
+      <input type="datetime-local" id="t7_start" value="${fmtDtEdit(task.start)}"></div>
+    <div class="form-row half" id="t7_finish_row"><label>Finish ${task.scheduleType==='Manual'?'':'(auto-calculated)'}</label>
+      <input type="datetime-local" id="t7_finish" value="${fmtDtEdit(task.finish)}" ${task.scheduleType!=='Manual'?'readonly style="background:#f4f5f8;color:#888"':''}></div>
+    <div class="form-row"><label>Resource</label>
+      <select id="t7_res">${resOpts}</select></div>
+    <div class="form-row half"><label>Team</label>
+      <select id="t7_team">${teamOpts}</select></div>
+    <div class="form-row half"><label>WC Override</label>
+      <select id="t7_wco">${wcOpts}</select></div>
+    <div class="form-row"><label>Notes</label>
+      <textarea id="t7_notes" rows="2">${h(task.notes||'')}</textarea></div>`;
+
+  modalSaveFn = () => t7ModalSave(taskId);
+  openModal();
+}
+
+function t7ModalTypeChange() {
+  const isManual = document.getElementById('t7_stype').value === 'Manual';
+  const finishInp = document.getElementById('t7_finish');
+  if (isManual) {
+    finishInp.removeAttribute('readonly');
+    finishInp.style.background = '';
+    finishInp.style.color = '';
+  } else {
+    finishInp.setAttribute('readonly', true);
+    finishInp.style.background = '#f4f5f8';
+    finishInp.style.color = '#888';
+  }
+}
+
+async function t7ModalSave(taskId) {
+  const task = t7Tasks.find(t => t.taskId === taskId);
+  if (!task) return;
+
+  const prev = {
+    taskDesc: task.taskDesc, scheduleType: task.scheduleType,
+    pctComplete: task.pctComplete, duration: task.duration,
+    predecessor: task.predecessor, start: task.start,
+    finish: task.finish, resource: task.resource,
+    team: task.team, wcOverride: task.wcOverride, notes: task.notes,
+  };
+
+  task.taskDesc    = document.getElementById('t7_desc').value.trim();
+  task.scheduleType= document.getElementById('t7_stype').value;
+  task.pctComplete = parseFloat(document.getElementById('t7_pct').value) || 0;
+  task.duration    = parseFloat(document.getElementById('t7_dur').value) || 0;
+  task.predecessor = document.getElementById('t7_pred').value.trim();
+  task.start       = document.getElementById('t7_start').value;
+  task.finish      = document.getElementById('t7_finish').value;
+  task.resource    = document.getElementById('t7_res').value;
+  task.team        = document.getElementById('t7_team').value;
+  task.wcOverride  = document.getElementById('t7_wco').value;
+  task.notes       = document.getElementById('t7_notes').value.trim();
 
   // Track changed fields
   if (!t7ChangedFields[taskId]) t7ChangedFields[taskId] = new Set();
-  t7ChangedFields[taskId].add(field);
+  const schedFields = ['scheduleType','duration','start','finish','resource','wcOverride'];
+  schedFields.forEach(f => { if (task[f] !== prev[f]) t7ChangedFields[taskId].add(f); });
 
-  // If Auto task: recalculate finish when start or duration changes
-  if (task.scheduleType !== 'Manual' && (field === 'start' || field === 'duration' || field === 'wcOverride' || field === 'resource')) {
-    if (task.start && task.duration > 0) {
-      try {
-        const res = await api('/admin/api/tasks/compute_finish', 'POST', {
-          scheduleType: task.scheduleType,
-          wcOverride:   task.wcOverride,
-          resource:     task.resource,
-          start:        task.start,
-          duration:     task.duration,
-        });
-        if (res.ok) {
-          task.finish = res.finish;
-          // Update finish display in row
-          const tr = document.getElementById(`t7r_${taskId}`);
-          if (tr) {
-            // Find finish cell (col index 7)
-            const cells = tr.querySelectorAll('td');
-            if (cells[7]) cells[7].textContent = fmtDtDisplay(res.finish);
-          }
-        }
-      } catch(e) { /* silent */ }
-    }
-  }
-
-  // Cascade to successors if finish changed
-  if (field === 'finish' || (field === 'start' || field === 'duration')) {
-    await t7CascadeSuccessors(taskId);
-  }
-
-  // Mark row dirty visually
-  const tr = document.getElementById(`t7r_${taskId}`);
-  if (tr) tr.style.background = '#fffde7';
-  document.getElementById('t7DirtyMsg').style.display = '';
-}
-
-// ── CASCADE SUCCESSORS ──
-async function t7CascadeSuccessors(taskId) {
-  const task = t7Tasks.find(t => t.taskId === taskId);
-  if (!task || !task.finish) return;
-
-  // Find tasks whose predecessor matches this task's rowNum
-  const rowNum = String(t7Tasks.findIndex(t => t.taskId === taskId) + 1);
-  const successors = t7Tasks.filter(t =>
-    t.predecessor && t.predecessor.split(',').map(s=>s.trim()).includes(rowNum)
-  );
-
-  for (const suc of successors) {
-    if (suc.scheduleType === 'Manual') continue;
+  // Auto-calculate finish for Auto tasks
+  if (task.scheduleType !== 'Manual' && task.start && task.duration > 0 && (task.resource || task.wcOverride)) {
     try {
       const res = await api('/admin/api/tasks/compute_finish', 'POST', {
-        scheduleType:      suc.scheduleType,
-        wcOverride:        suc.wcOverride,
-        resource:          suc.resource,
-        duration:          suc.duration,
-        predecessorFinish: task.finish,
+        scheduleType: task.scheduleType,
+        wcOverride:   task.wcOverride,
+        resource:     task.resource,
+        start:        task.start,
+        duration:     task.duration,
       });
       if (res.ok) {
-        suc.start  = res.start;
-        suc.finish = res.finish;
-        t7Dirty.add(suc.taskId);
-        // Recurse
-        await t7CascadeSuccessors(suc.taskId);
+        task.finish = res.finish;
+        document.getElementById('t7_finish').value = fmtDtEdit(res.finish);
+        // Brief flash to show calculated value
+        await new Promise(r => setTimeout(r, 300));
+      } else {
+        toast(res.error, true);
+        // Restore previous values
+        Object.assign(task, prev);
+        return;
       }
     } catch(e) { /* silent */ }
   }
-  // Re-render to show updated values
+
+  t7Dirty.add(taskId);
+  closeModal();
   renderT7Rows();
+  document.getElementById('t7DirtyMsg').style.display = '';
+  toast('Updated — click Save All to persist');
 }
 
 // ── ADD TASK ──
@@ -1047,77 +1036,42 @@ function t7AddTask() {
   if (idx < 0) return;
 
   const refTask = t7Tasks[idx];
+  const newId   = `new_${Date.now()}`;
   const newTask = {
-    taskId:       `new_${Date.now()}`,
-    uniqueId:     '',
-    rowNum:       idx + 2,
-    wbs:          refTask.wbs,   // same level as selected
-    depth:        refTask.depth,
-    isHeader:     false,
-    taskDesc:     '',
-    duration:     0,
-    start:        '',
-    finish:       '',
-    pctComplete:  0,
-    resource:     '',
-    team:         '',
-    predecessor:  '',
-    successors:   '',
-    notes:        '',
-    wcOverride:   '',
-    scheduleType: 'Auto',
-    isNew:        true,
+    taskId: newId, uniqueId: '', rowNum: idx+2,
+    wbs: refTask.wbs, depth: refTask.depth, isHeader: false,
+    taskDesc: '', duration: 0, start: '', finish: '',
+    pctComplete: 0, resource: '', team: '', predecessor: '',
+    successors: '', notes: '', wcOverride: '', scheduleType: 'Auto', isNew: true,
   };
 
-  t7Tasks.splice(idx + 1, 0, newTask);
+  t7Tasks.splice(idx+1, 0, newTask);
   t7RecalcWBS();
-  t7Dirty.add(newTask.taskId);
-  t7Selected = new Set([newTask.taskId]);
+  t7Dirty.add(newId);
+  t7Selected = new Set([newId]);
   renderT7Rows();
   document.getElementById('t7DirtyMsg').style.display = '';
-
-  // Focus task name
-  setTimeout(() => {
-    const tr = document.getElementById(`t7r_${newTask.taskId}`);
-    if (tr) {
-      const inp = tr.querySelector('input[type=text]');
-      if (inp) inp.focus();
-    }
-  }, 100);
+  // Open modal immediately for new task
+  t7OpenModal(newId);
 }
 
 // ── DELETE ──
 async function t7DeleteSelected() {
-  const ids = [...t7Selected].filter(id => !String(id).startsWith('new_'));
+  const ids    = [...t7Selected].filter(id => !String(id).startsWith('new_'));
   const newIds = [...t7Selected].filter(id => String(id).startsWith('new_'));
-
-  // Remove new (unsaved) rows immediately
-  newIds.forEach(id => {
-    const idx = t7Tasks.findIndex(t => t.taskId === id);
-    if (idx >= 0) t7Tasks.splice(idx, 1);
-  });
+  newIds.forEach(id => { const i = t7Tasks.findIndex(t=>t.taskId===id); if(i>=0) t7Tasks.splice(i,1); });
 
   if (ids.length) {
-    try {
-      const res = await api('/admin/api/tasks/delete', 'POST', { taskIds: ids, force: false });
-      if (!res.ok && res.hasChildren) {
-        if (!confirm(res.message)) {
-          renderT7Rows();
-          return;
-        }
-        await api('/admin/api/tasks/delete', 'POST', { taskIds: ids, force: true });
-        // Also remove children from local array
-        const wbsToDelete = t7Tasks
-          .filter(t => ids.includes(t.taskId))
-          .map(t => t.wbs);
-        t7Tasks = t7Tasks.filter(t =>
-          !ids.includes(t.taskId) &&
-          !wbsToDelete.some(w => t.wbs !== w && t.wbs.startsWith(w + '.'))
-        );
-      } else {
-        t7Tasks = t7Tasks.filter(t => !ids.includes(t.taskId));
-      }
-    } catch(e) { toast('Delete failed', true); return; }
+    const res = await api('/admin/api/tasks/delete', 'POST', {taskIds:ids, force:false});
+    if (!res.ok && res.hasChildren) {
+      if (!confirm(res.message)) { renderT7Rows(); return; }
+      await api('/admin/api/tasks/delete', 'POST', {taskIds:ids, force:true});
+      const wbsDel = t7Tasks.filter(t=>ids.includes(t.taskId)).map(t=>t.wbs);
+      t7Tasks = t7Tasks.filter(t => !ids.includes(t.taskId) &&
+        !wbsDel.some(w => t.wbs !== w && t.wbs.startsWith(w+'.')));
+    } else {
+      t7Tasks = t7Tasks.filter(t => !ids.includes(t.taskId));
+    }
   }
 
   t7Selected = new Set();
@@ -1126,185 +1080,136 @@ async function t7DeleteSelected() {
   toast('Deleted');
 }
 
-// ── INDENT ──
+// ── INDENT / OUTDENT ──
 function t7Indent() {
-  const selIds = [...t7Selected];
-  if (!selIds.length) { toast('Select rows to indent', true); return; }
-
-  selIds.forEach(tid => {
-    const idx = t7Tasks.findIndex(t => t.taskId === tid);
-    if (idx < 1) return; // can't indent first row
-    const above = t7Tasks[idx - 1];
+  if (!t7Selected.size) { toast('Select rows to indent', true); return; }
+  t7Selected.forEach(tid => {
+    const idx = t7Tasks.findIndex(t=>t.taskId===tid);
+    if (idx < 1) return;
+    const above = t7Tasks[idx-1];
     const task  = t7Tasks[idx];
-    // Can only indent if above task is at same or higher (lower depth) level
-    if (above.depth <= task.depth) {
-      task.depth += 1;
-      t7Dirty.add(tid);
-    }
+    if (above.depth <= task.depth) { task.depth++; t7Dirty.add(tid); }
   });
-
-  t7RecalcWBS();
-  renderT7Rows();
+  t7RecalcWBS(); renderT7Rows();
   document.getElementById('t7DirtyMsg').style.display = '';
 }
 
-// ── OUTDENT ──
 function t7Outdent() {
-  const selIds = [...t7Selected];
-  if (!selIds.length) { toast('Select rows to outdent', true); return; }
-
-  selIds.forEach(tid => {
-    const task = t7Tasks.find(t => t.taskId === tid);
-    if (!task || task.depth === 0) return;
-    task.depth -= 1;
-    t7Dirty.add(tid);
+  if (!t7Selected.size) { toast('Select rows to outdent', true); return; }
+  t7Selected.forEach(tid => {
+    const task = t7Tasks.find(t=>t.taskId===tid);
+    if (!task || task.depth===0) return;
+    task.depth--; t7Dirty.add(tid);
   });
-
-  t7RecalcWBS();
-  renderT7Rows();
+  t7RecalcWBS(); renderT7Rows();
   document.getElementById('t7DirtyMsg').style.display = '';
 }
 
 // ── RECALC WBS ──
 function t7RecalcWBS() {
-  // Rebuild WBS from scratch based on depth
   const counters = [];
   t7Tasks.forEach(task => {
     const d = task.depth;
     while (counters.length <= d) counters.push(0);
     counters[d]++;
-    // Reset deeper levels
-    for (let i = d + 1; i < counters.length; i++) counters[i] = 0;
-    task.wbs = counters.slice(0, d + 1).join('.');
-    // Recompute isHeader
-    task.isHeader = false; // will be set below
+    for (let i=d+1; i<counters.length; i++) counters[i]=0;
+    task.wbs = counters.slice(0,d+1).join('.');
   });
-  // Mark headers
-  const wbsSet = new Set(t7Tasks.map(t => t.wbs));
+  const wbsSet = new Set(t7Tasks.map(t=>t.wbs));
   t7Tasks.forEach(task => {
-    task.isHeader = [...wbsSet].some(w => w !== task.wbs && w.startsWith(task.wbs + '.'));
+    task.isHeader = [...wbsSet].some(w => w!==task.wbs && w.startsWith(task.wbs+'.'));
   });
 }
 
 // ── SAVE ALL ──
 async function t7SaveAll() {
-  const dirtyTasks = t7Tasks.filter(t => t7Dirty.has(t.taskId));
-  if (!dirtyTasks.length) { toast('Nothing to save'); return; }
-
+  const dirty = t7Tasks.filter(t => t7Dirty.has(t.taskId));
+  if (!dirty.length) { toast('Nothing to save'); return; }
   document.getElementById('btnSaveAll').textContent = '⏳ Saving...';
   let errors = [];
 
-  for (const task of dirtyTasks) {
+  for (const task of dirty) {
     try {
       const payload = {
         taskId:       String(task.taskId).startsWith('new_') ? null : task.taskId,
-        client:       ctxClient,
-        project:      ctxProject,
-        release:      ctxRelease,
-        wbs:          task.wbs,
-        taskDesc:     task.taskDesc,
-        duration:     task.duration,
-        start:        task.start,
-        finish:       task.finish,
-        pctComplete:  task.pctComplete,
-        resource:     task.resource,
-        team:         task.team,
-        predecessor:  task.predecessor,
-        successors:   task.successors,
-        notes:        task.notes,
-        wcOverride:   task.wcOverride,
-        scheduleType: task.scheduleType,
-        changedFields: [...(t7ChangedFields[task.taskId] || new Set())],
+        client:       ctxClient, project: ctxProject, release: ctxRelease,
+        wbs:          task.wbs, taskDesc: task.taskDesc, duration: task.duration,
+        start:        task.start, finish: task.finish, pctComplete: task.pctComplete,
+        resource:     task.resource, team: task.team, predecessor: task.predecessor,
+        successors:   task.successors, notes: task.notes,
+        wcOverride:   task.wcOverride, scheduleType: task.scheduleType,
+        changedFields:[...(t7ChangedFields[task.taskId]||new Set())],
       };
       const res = await api('/admin/api/tasks/save', 'POST', payload);
       if (res.ok) {
-        // Replace temp ID with real TaskID
         if (String(task.taskId).startsWith('new_')) task.taskId = res.taskId;
         if (res.finish) task.finish = res.finish;
         t7Dirty.delete(task.taskId);
         delete t7ChangedFields[task.taskId];
       } else {
-        errors.push(`Row ${task.wbs}: ${res.error}`);
+        errors.push(`WBS ${task.wbs}: ${res.error}`);
       }
-    } catch(e) {
-      errors.push(`Row ${task.wbs}: Save failed`);
-    }
+    } catch(e) { errors.push(`WBS ${task.wbs}: Save failed`); }
   }
 
-  // Save WBS order for all tasks
   await api('/admin/api/tasks/reorder', 'POST', {
-    tasks: t7Tasks.map(t => ({ taskId: t.taskId, wbs: t.wbs }))
+    tasks: t7Tasks.map(t=>({taskId:t.taskId, wbs:t.wbs}))
   });
 
   document.getElementById('btnSaveAll').textContent = '💾 Save All';
-
   if (errors.length) {
     toast(`${errors.length} error(s): ${errors[0]}`, true);
   } else {
-    toast(`Saved ${dirtyTasks.length} task(s)`);
+    toast(`Saved ${dirty.length} task(s)`);
     document.getElementById('t7DirtyMsg').style.display = 'none';
     renderT7Rows();
   }
 }
 
 // ── SELECT HELPERS ──
-function t7ToggleSelect(taskId, chk, e) {
-  if (t7Selected.has(taskId)) {
-    t7Selected.delete(taskId);
-    if (chk) chk.checked = false;
-    const tr = document.getElementById(`t7r_${taskId}`);
-    if (tr) tr.classList.remove('selected');
-  } else {
-    t7Selected.add(taskId);
-    if (chk) chk.checked = true;
-    const tr = document.getElementById(`t7r_${taskId}`);
-    if (tr) tr.classList.add('selected');
-  }
+function t7ToggleSelect(taskId, chk) {
+  if (t7Selected.has(taskId)) { t7Selected.delete(taskId); }
+  else                         { t7Selected.add(taskId); }
+  const tr = document.getElementById(`t7r_${taskId}`);
+  if (tr) tr.classList.toggle('selected', t7Selected.has(taskId));
+  if (chk) chk.checked = t7Selected.has(taskId);
 }
 
 function t7ToggleAll(chk) {
-  if (chk.checked) {
-    t7Tasks.forEach(t => t7Selected.add(t.taskId));
-  } else {
-    t7Selected.clear();
-  }
+  if (chk.checked) t7Tasks.forEach(t=>t7Selected.add(t.taskId));
+  else             t7Selected.clear();
   renderT7Rows();
 }
 
-// ── DATE HELPERS ──
+// ── HELPERS ──
+function fmtDur7(m) {
+  if (!m) return '0m';
+  if (m < 60)  return m+'m';
+  if (m < 480) return (m/60).toFixed(1)+'h';
+  return (m/60/8).toFixed(1)+'d';
+}
+
 function fmtDtEdit(val) {
   if (!val) return '';
-  try {
-    return val.substring(0,16).replace(' ','T');
-  } catch { return val; }
+  try { return val.substring(0,16).replace(' ','T'); } catch { return val; }
 }
 
 function fmtDtDisplay(val) {
   if (!val) return '';
   try {
     const dt = new Date(val.replace('T',' '));
-    return dt.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'}) +
-      ' ' + dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
+    return dt.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'})+
+      ' '+dt.toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit',hour12:false});
   } catch { return val; }
 }
 
-function t7StartEdit(taskId, field, el) {
-  // For task name inline editing
-  const task = t7Tasks.find(t => t.taskId === taskId);
-  if (!task) return;
-  const inp = document.createElement('input');
-  inp.type  = 'text';
-  inp.value = task[field] || '';
-  inp.style.cssText = 'width:100%;font-size:11.5px;padding:2px 4px;border:1px solid #aac;border-radius:2px';
-  el.replaceWith(inp);
-  inp.focus(); inp.select();
-  const done = () => {
-    t7FieldChanged(taskId, field, inp.value);
-    renderT7Rows();
-  };
-  inp.addEventListener('blur', done);
-  inp.addEventListener('keydown', e => { if (e.key==='Enter') inp.blur(); if (e.key==='Escape') renderT7Rows(); });
+function makeTd2(text, style) {
+  const td = document.createElement('td');
+  td.textContent = text ?? '';
+  if (style) td.style.cssText = style;
+  return td;
 }
+
 
 // ── MODAL HELPERS ──
 function openModal()  { document.getElementById('modalOverlay').classList.add('open'); }
