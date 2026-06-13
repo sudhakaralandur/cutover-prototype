@@ -775,7 +775,7 @@ async function renderTasksPlaceholder() {
     api('/admin/api/wccodes'),
     api(`/admin/api/resources?client=${enc(ctxClient)}&project=${enc(ctxProject)}&release=${enc(ctxRelease)}`),
   ]);
-  t7Tasks     = tasks;
+  t7Tasks     = sortByWBS(tasks);
   t7WCCodes   = wcs;
   t7Resources = ress;
   t7Teams     = [...new Set(tasks.map(t => t.team).filter(Boolean))].sort();
@@ -1191,7 +1191,7 @@ async function t7SaveAll() {
     toast(`Saved ${dirty.length} task(s)`);
     // Re-fetch from server to get clean state
     const fresh = await api(`/admin/api/tasks/list?client=${enc(ctxClient)}&project=${enc(ctxProject)}&release=${enc(ctxRelease)}`);
-    t7Tasks = fresh;
+    t7Tasks = sortByWBS(fresh);
     t7Dirty.clear();
     renderTaskGrid();
   }
@@ -1213,6 +1213,20 @@ function t7ToggleAll(chk) {
 }
 
 // ── HELPERS ──
+function sortByWBS(tasks) {
+  // Sort tasks by WBS numerically (1 < 1.1 < 1.2 < 1.10 < 2 etc.)
+  return [...tasks].sort((a, b) => {
+    const aParts = (a.wbs||'').split('.').map(Number);
+    const bParts = (b.wbs||'').split('.').map(Number);
+    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+      const av = aParts[i] ?? -1;
+      const bv = bParts[i] ?? -1;
+      if (av !== bv) return av - bv;
+    }
+    return 0;
+  });
+}
+
 function fmtDur7(m) {
   if (!m) return '0m';
   if (m < 60)  return m+'m';
