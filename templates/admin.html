@@ -795,6 +795,8 @@ function renderTaskGrid() {
       <button class="btn sm" onclick="t7Outdent()">← Outdent</button>
       <div style="width:1px;height:20px;background:#dde;margin:0 4px"></div>
       <button class="btn sm success" onclick="t7SaveAll()" id="btnSaveAll">💾 Save All</button>
+      <div style="width:1px;height:20px;background:#dde;margin:0 4px"></div>
+      <button class="btn sm" onclick="t7OpenImportModal()" style="background:#fff3cd;border-color:#e0a800;color:#7a5c00">📥 Import from Excel</button>
       <span id="t7DirtyMsg" style="font-size:10px;color:#c0392b;display:none">● Unsaved changes</span>
       <div style="margin-left:auto;font-size:11px;color:#666"><span id="t7Stats">${t7Tasks.length} tasks</span></div>
     </div>
@@ -1228,6 +1230,82 @@ function t7ToggleAll(chk) {
 }
 
 // ── HELPERS ──
+// ── EXCEL IMPORT ──
+function t7OpenImportModal() {
+  document.getElementById('modalTitle').textContent = 'Import Tasks from Excel';
+  document.getElementById('modalBody').innerHTML = `
+    <div style="background:#fff3cd;border:1px solid #e0a800;border-radius:6px;padding:10px 12px;margin-bottom:14px;font-size:11px;color:#7a5c00">
+      ⚠️ <strong>This will REPLACE all existing tasks</strong> for ${h(ctxProject)} — ${h(ctxRelease)}.<br>
+      This cannot be undone. Make sure you have a backup if needed.
+    </div>
+    <div class="form-row">
+      <label>Required columns (header row): <code>WBS, TaskDesc, ResourceName, Duration, Predecessor</code></label>
+      <div class="hint">WBS values you assign directly (e.g. 1, 1.1, 1.2). Predecessor = row number (1-based) in the sheet, comma-separated for multiple.</div>
+    </div>
+    <div class="form-row">
+      <label>Excel File (.xlsx) *</label>
+      <input type="file" id="t7_import_file" accept=".xlsx">
+    </div>
+    <div id="t7_import_status" style="display:none;margin-top:10px;padding:10px;border-radius:6px;font-size:11px;max-height:220px;overflow-y:auto"></div>
+  `;
+  modalSaveFn = t7DoImport;
+  openModal();
+}
+
+async function t7DoImport() {
+  const fileInput = document.getElementById('t7_import_file');
+  const statusDiv = document.getElementById('t7_import_status');
+  if (!fileInput.files.length) { toast('Select an Excel file first', true); return; }
+
+  const formData = new FormData();
+  formData.append('client', ctxClient);
+  formData.append('project', ctxProject);
+  formData.append('release', ctxRelease);
+  formData.append('file', fileInput.files[0]);
+
+  statusDiv.style.display = '';
+  statusDiv.style.background = '#eef2fb';
+  statusDiv.innerHTML = '⏳ Importing... this may take a moment for large files.';
+
+  try {
+    const res = await fetch('/admin/api/tasks/import', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!data.ok) {
+      statusDiv.style.background = '#fde8e8';
+      statusDiv.innerHTML = `❌ Import failed: ${h(data.error || 'Unknown error')}`;
+      return;
+    }
+
+    let html = `<strong>✅ Imported ${data.imported} task(s)</strong>`;
+    if (data.errorCount > 0) {
+      statusDiv.style.background = '#fff3cd';
+      html += `<br><strong style="color:#c0392b">${data.errorCount} row(s) had issues (Start/Finish left blank):</strong><ul style="margin:6px 0 0 18px;padding:0">`;
+      data.errors.forEach(e => { html += `<li>${h(e)}</li>`; });
+      html += `</ul>`;
+    } else {
+      statusDiv.style.background = '#e8f5e9';
+    }
+    statusDiv.innerHTML = html;
+
+    toast(`Imported ${data.imported} tasks` + (data.errorCount ? ` (${data.errorCount} warnings)` : ''));
+
+    // Reload task grid after a short delay so user can read the summary
+    setTimeout(async () => {
+      closeModal();
+      const fresh = await api(`/admin/api/tasks/list?client=${enc(ctxClient)}&project=${enc(ctxProject)}&release=${enc(ctxRelease)}`);
+      t7Tasks = sortByWBS(fresh);
+      t7Dirty.clear();
+      t7Selected = new Set();
+      renderTaskGrid();
+    }, data.errorCount ? 4000 : 1200);
+
+  } catch (e) {
+    statusDiv.style.background = '#fde8e8';
+    statusDiv.innerHTML = `❌ Import failed: ${h(e.message)}`;
+  }
+}
+
 function sortByWBS(tasks) {
   // Sort tasks by WBS numerically (1 < 1.1 < 1.2 < 1.10 < 2 etc.)
   return [...tasks].sort((a, b) => {
