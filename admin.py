@@ -10,6 +10,13 @@ def db():
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
+@admin_bp.errorhandler(Exception)
+def handle_admin_api_error(e):
+    """Ensure every /admin/api/* route returns JSON on unhandled errors instead of an HTML error page."""
+    import traceback
+    traceback.print_exc()
+    return jsonify({'ok': False, 'error': f'Server error: {str(e)}'}), 500
+
 # ── STEP 7b: Excel Import ─────────────────────────────────────
 @admin_bp.route('/api/tasks/import', methods=['POST'])
 def tasks_import():
@@ -153,9 +160,13 @@ def tasks_import():
                     elif latest_finish:
                         if resource:
                             first_res = resource.split(',')[0].strip()
-                            start_dt_str, err = get_successor_start(latest_finish, first_res, None)
-                            if err:
-                                row_error = f"Row {row_num}: {err}"
+                            try:
+                                start_dt_str, err = get_successor_start(latest_finish, first_res, None)
+                                if err:
+                                    row_error = f"Row {row_num}: {err}"
+                            except Exception as calc_err:
+                                row_error = f"Row {row_num}: calculation error — {calc_err}"
+                                start_dt_str = None
                         else:
                             row_error = f"Row {row_num}: has predecessor but no resource assigned — cannot determine calendar."
                 else:
@@ -170,15 +181,19 @@ def tasks_import():
             # Calculate finish if we have a start
             if start_dt_str and not row_error:
                 if resource:
-                    finish_dt_str, err = compute_finish({
-                        'ScheduleType': 'Auto',
-                        'WorkCalendarOverride': '',
-                        'ResourceName': resource,
-                        'StartDateTime': start_dt_str,
-                        'Duration': duration,
-                    })
-                    if err:
-                        row_error = f"Row {row_num}: {err}"
+                    try:
+                        finish_dt_str, err = compute_finish({
+                            'ScheduleType': 'Auto',
+                            'WorkCalendarOverride': '',
+                            'ResourceName': resource,
+                            'StartDateTime': start_dt_str,
+                            'Duration': duration,
+                        })
+                        if err:
+                            row_error = f"Row {row_num}: {err}"
+                    except Exception as calc_err:
+                        row_error = f"Row {row_num}: calculation error — {calc_err}"
+                        finish_dt_str = None
                 else:
                     row_error = f"Row {row_num}: has duration but no resource assigned — cannot calculate finish."
 
