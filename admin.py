@@ -389,10 +389,11 @@ def tasks_compute_finish():
     from scheduler import compute_finish, get_successor_start
     d = request.json
 
-    if d.get('predecessorFinish') and d.get('resource'):
+    if d.get('predecessorFinish') and (d.get('resource') or d.get('wcOverride')):
+        resource_for_lookup = d['resource'].split(',')[0].strip() if d.get('resource') else ''
         start, err = get_successor_start(
             d['predecessorFinish'],
-            d['resource'].split(',')[0].strip(),
+            resource_for_lookup,
             d.get('wcOverride')
         )
         if err:
