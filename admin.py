@@ -10,6 +10,255 @@ def db():
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
+# ── STEP 7b: Excel Import ─────────────────────────────────────
+@admin_bp.route('/api/tasks/import', methods=['POST'])
+def tasks_import():
+    """
+    Replace all tasks for a project with rows parsed from an uploaded Excel file.
+    Expected columns: WBS, TaskDesc, ResourceName, Duration, Predecessor
+    Calculates Start/Finish in row order using scheduler.py logic.
+    """
+    import openpyxl
+    from scheduler import compute_finish, get_successor_start, parse_dt
+    from datetime import datetime
+
+    client  = request.form.get('client', '')
+    project = request.form.get('project', '')
+    release = request.form.get('release', '')
+    file    = request.files.get('file')
+
+    if not (client and project and release):
+        return jsonify({'ok': False, 'error': 'Missing project context.'}), 400
+    if not file:
+        return jsonify({'ok': False, 'error': 'No file uploaded.'}), 400
+
+    try:
+        wb = openpyxl.load_workbook(file, data_only=True)
+        ws = wb.active
+    except Exception as e:
+        return jsonify({'ok': False, 'error': f'Could not read Excel file: {e}'}), 400
+
+    # Read header row, map column names (case-insensitive, trimmed)
+    headers = {}
+    for idx, cell in enumerate(ws[1]):
+        if cell.value:
+            headers[str(cell.value).strip().lower()] = idx
+
+    required = ['wbs', 'taskdesc']
+    for r in required:
+        if r not in headers:
+            return jsonify({'ok': False, 'error': f"Missing required column: {r}"}), 400
+
+    def get_cell(row, name):
+        idx = headers.get(name)
+        if idx is None:
+            return None
+        val = row[idx].value if idx < len(row) else None
+        return str(val).strip() if val is not None else None
+
+    # Parse all rows first
+    rows_data = []
+    for row in ws.iter_rows(min_row=2):
+        wbs = get_cell(row, 'wbs')
+        if not wbs:
+            continue  # skip blank rows
+        rows_data.append({
+            'wbs':         wbs,
+            'taskDesc':    get_cell(row, 'taskdesc') or '',
+            'resource':    get_cell(row, 'resourcename') or '',
+            'duration':    get_cell(row, 'duration') or '0',
+            'predecessor': get_cell(row, 'predecessor') or '',
+        })
+
+    if not rows_data:
+        return jsonify({'ok': False, 'error': 'No data rows found in the Excel file.'}), 400
+
+    conn = db()
+
+    # Get project's CutoverStartDateTime as default start
+    proj = conn.execute(
+        "SELECT CutoverStartDateTime FROM ProjectInfo WHERE Client=? AND ProjectName=? AND Release=?",
+        [client, project, release]
+    ).fetchone()
+    default_start = proj['CutoverStartDateTime'] if proj else None
+
+    # Get NumberRange for this project
+    nr = conn.execute(
+        "SELECT RangeKey, LastUsedNumber FROM NumberRange WHERE Client=? AND ProjectName=? AND Release=?",
+        [client, project, release]
+    ).fetchone()
+    range_key = nr['RangeKey'] if nr else None
+    next_unique_id = (nr['LastUsedNumber'] if nr else 0)
+
+    # REPLACE: delete all existing tasks for this project
+    conn.execute(
+        "DELETE FROM Tasks WHERE Client=? AND ProjectName=? AND Release=?",
+        [client, project, release]
+    )
+    conn.commit()
+
+    # Determine header tasks (WBS that is a prefix of another WBS)
+    all_wbs = [r['wbs'] for r in rows_data]
+    def is_header(wbs):
+        return any(w != wbs and w.startswith(wbs + '.') for w in all_wbs)
+
+    errors = []
+    inserted_tasks = []  # list of dicts with taskId, wbs, finish (in insertion order)
+
+    for i, r in enumerate(rows_data):
+        row_num = i + 1  # 1-based row position = predecessor reference number
+        wbs = r['wbs']
+        task_desc = r['taskDesc']
+        resource = r['resource']
+        try:
+            duration = float(r['duration']) if r['duration'] else 0
+        except ValueError:
+            duration = 0
+        predecessor = r['predecessor']
+        header_flag = is_header(wbs)
+
+        start_dt_str = None
+        finish_dt_str = None
+        row_error = None
+
+        if header_flag:
+            # Header tasks get rolled up later; skip calc for now
+            pass
+        elif duration <= 0:
+            # Zero-duration / milestone task — still needs a start
+            pass
+        else:
+            # Determine start
+            if predecessor:
+                pred_nums = []
+                for p in predecessor.split(','):
+                    p = p.strip()
+                    if p.isdigit():
+                        pred_nums.append(int(p))
+                if pred_nums:
+                    latest_finish = None
+                    missing = []
+                    for pn in pred_nums:
+                        if 1 <= pn <= len(inserted_tasks):
+                            pf = inserted_tasks[pn - 1]['finish']
+                            if pf:
+                                if not latest_finish or pf > latest_finish:
+                                    latest_finish = pf
+                            else:
+                                missing.append(pn)
+                        else:
+                            missing.append(pn)
+                    if missing:
+                        row_error = f"Row {row_num}: predecessor row(s) {missing} have no finish date (likely header or zero-duration)."
+                    elif latest_finish:
+                        if resource:
+                            first_res = resource.split(',')[0].strip()
+                            start_dt_str, err = get_successor_start(latest_finish, first_res, None)
+                            if err:
+                                row_error = f"Row {row_num}: {err}"
+                        else:
+                            row_error = f"Row {row_num}: has predecessor but no resource assigned — cannot determine calendar."
+                else:
+                    row_error = f"Row {row_num}: predecessor '{predecessor}' is not a valid row number."
+            else:
+                # No predecessor — use project default start
+                if default_start:
+                    start_dt_str = default_start
+                else:
+                    row_error = f"Row {row_num}: no predecessor and project has no CutoverStartDateTime set."
+
+            # Calculate finish if we have a start
+            if start_dt_str and not row_error:
+                if resource:
+                    finish_dt_str, err = compute_finish({
+                        'ScheduleType': 'Auto',
+                        'WorkCalendarOverride': '',
+                        'ResourceName': resource,
+                        'StartDateTime': start_dt_str,
+                        'Duration': duration,
+                    })
+                    if err:
+                        row_error = f"Row {row_num}: {err}"
+                else:
+                    row_error = f"Row {row_num}: has duration but no resource assigned — cannot calculate finish."
+
+        if row_error:
+            errors.append(row_error)
+
+        next_unique_id += 1
+        team_name = None  # Could be derived from Resources table later if needed
+
+        cur = conn.execute("""
+            INSERT INTO Tasks (Client, ProjectName, Release, UniqueID, WBS, TaskDesc,
+                ResourceName, Duration, Predecessor, StartDateTime, FinishDateTime,
+                PerComplete, ScheduleType, TeamName)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [client, project, release, next_unique_id, wbs, task_desc,
+              resource, duration, predecessor, start_dt_str, finish_dt_str,
+              0, 'Auto', team_name])
+
+        new_task_id = cur.lastrowid
+        inserted_tasks.append({
+            'taskId': new_task_id, 'wbs': wbs,
+            'start': start_dt_str, 'finish': finish_dt_str,
+            'isHeader': header_flag, 'duration': duration,
+        })
+
+    conn.commit()
+
+    # ── Rollup header Duration + PerComplete from leaf children ──
+    wbs_map = {t['wbs']: t for t in inserted_tasks}
+
+    def get_leaf_descendants(parent_wbs):
+        leaves = []
+        for w, t in wbs_map.items():
+            if w == parent_wbs:
+                continue
+            if w.startswith(parent_wbs + '.'):
+                has_children = any(
+                    ow != w and ow.startswith(w + '.') for ow in wbs_map
+                )
+                if not has_children:
+                    leaves.append(w)
+        return leaves
+
+    headers_sorted = sorted(
+        [t for t in inserted_tasks if t['isHeader']],
+        key=lambda t: t['wbs'].count('.'), reverse=True
+    )
+    for h in headers_sorted:
+        leaves = get_leaf_descendants(h['wbs'])
+        if not leaves:
+            continue
+        total_dur = sum(wbs_map[l]['duration'] or 0 for l in leaves)
+        starts  = [wbs_map[l]['start']  for l in leaves if wbs_map[l]['start']]
+        finishes= [wbs_map[l]['finish'] for l in leaves if wbs_map[l]['finish']]
+        h_start  = min(starts) if starts else None
+        h_finish = max(finishes) if finishes else None
+        conn.execute(
+            "UPDATE Tasks SET Duration=?, StartDateTime=?, FinishDateTime=? WHERE TaskID=?",
+            [total_dur, h_start, h_finish, h['taskId']]
+        )
+        # Update in-memory for further rollups
+        h['duration'] = total_dur
+        h['start'] = h_start
+        h['finish'] = h_finish
+
+    # Update NumberRange
+    if range_key:
+        conn.execute("UPDATE NumberRange SET LastUsedNumber=? WHERE RangeKey=?",
+                     [next_unique_id, range_key])
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        'ok': True,
+        'imported': len(inserted_tasks),
+        'errors': errors,
+        'errorCount': len(errors),
+    })
+
+
 # ── STEP 1: WorkCalendar ──────────────────────────────────────
 @admin_bp.route('/api/workcalendar', methods=['GET'])
 def wc_list():
