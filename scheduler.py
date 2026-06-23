@@ -120,7 +120,7 @@ def is_working_minute(dt, calendar, holidays):
         return date_str not in holidays
 
     # Check work days
-    work_days_str = calendar.get('WorkDays', 'MON,TUE,WED,THU,FRI')
+    work_days_str = calendar.get('WorkDays') or 'MON,TUE,WED,THU,FRI'
     work_days = set(d.strip() for d in work_days_str.split(','))
     day_names  = ['MON','TUE','WED','THU','FRI','SAT','SUN']
     if day_names[dt.weekday()] not in work_days:
@@ -132,8 +132,8 @@ def is_working_minute(dt, calendar, holidays):
         return False
 
     # Check shift hours
-    shift_start = parse_time(calendar.get('ShiftStart', '08:00'))
-    shift_end   = parse_time(calendar.get('ShiftEnd',   '17:00'))
+    shift_start = parse_time(calendar.get('ShiftStart') or '08:00')
+    shift_end   = parse_time(calendar.get('ShiftEnd')   or '17:00')
     t = dt.time().replace(second=0, microsecond=0)
     return shift_start <= t < shift_end
 
@@ -164,13 +164,13 @@ def next_working_start_after(dt, calendar, holidays):
         nxt = dt.replace(second=0, microsecond=0) + timedelta(minutes=1)
         return next_working_minute(nxt, calendar, holidays)
 
-    shift_start = parse_time(calendar.get('ShiftStart', '08:00'))
+    shift_start = parse_time(calendar.get('ShiftStart') or '08:00')
     # Try same day first, then advance
     candidate = dt.replace(second=0, microsecond=0) + timedelta(minutes=1)
 
     for _ in range(365):
         day_names = ['MON','TUE','WED','THU','FRI','SAT','SUN']
-        work_days_str = calendar.get('WorkDays', 'MON,TUE,WED,THU,FRI')
+        work_days_str = calendar.get('WorkDays') or 'MON,TUE,WED,THU,FRI'
         work_days = set(d.strip() for d in work_days_str.split(','))
         date_str  = candidate.strftime('%Y-%m-%d')
 
