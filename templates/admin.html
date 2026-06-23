@@ -1014,21 +1014,36 @@ async function t7ModalSave(taskId) {
 
       // If predecessor set and no manual start — derive start from predecessor finish
       if (task.predecessor && !task.start) {
-        const predNums = task.predecessor.split(',').map(s => parseInt(s.trim()));
-        // Find the latest finish among all predecessors
+        const predNums = task.predecessor.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+        // Find the latest finish among all predecessors (lookup by current row position, 1-based)
         let latestFinish = null;
+        let missingPred = [];
         for (const pNum of predNums) {
-          const predTask = t7Tasks[pNum - 1];  // rowNum is 1-based
+          const predTask = t7Tasks[pNum - 1];  // row position in current sorted array
           if (predTask && predTask.finish) {
             if (!latestFinish || predTask.finish > latestFinish) {
               latestFinish = predTask.finish;
             }
+          } else {
+            missingPred.push(pNum);
           }
         }
-        if (latestFinish) payload.predecessorFinish = latestFinish;
-        else if (task.start) payload.start = task.start;
+        if (missingPred.length) {
+          toast(`Predecessor row ${missingPred.join(',')} has no Finish date yet — set it first`, true);
+          Object.assign(task, prev);
+          return;
+        }
+        if (latestFinish) {
+          payload.predecessorFinish = latestFinish;
+        } else {
+          toast('Could not resolve predecessor finish date', true);
+          Object.assign(task, prev);
+          return;
+        }
       } else if (task.start) {
         payload.start = task.start;
+      } else {
+        toast('Set a Start date or a Predecessor to auto-calculate Finish', true);
       }
 
       if (payload.start || payload.predecessorFinish) {
