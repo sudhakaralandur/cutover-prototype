@@ -5,9 +5,10 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 DB_PATH  = os.path.join(os.path.dirname(__file__), 'project_mgmt.db')
 
 def db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA busy_timeout = 8000")
     return conn
 
 @admin_bp.errorhandler(Exception)
@@ -574,35 +575,57 @@ def tasks_save():
               d.get('predecessor'),d.get('successors'),d.get('notes'),
               d.get('wcOverride') or None, d.get('scheduleType','Auto'),
               d['taskId']])
+        conn.commit()
+        conn.close()
     else:
-        # New task — get next UniqueID from NumberRange
-        conn2 = db()
-        nr = conn2.execute(
-            "SELECT RangeKey,LastUsedNumber FROM NumberRange WHERE Client=? AND ProjectName=? AND Release=?",
-            [client,project,release]
-        ).fetchone()
-        next_id = (nr['LastUsedNumber'] + 1) if nr else 1
-        range_key = nr['RangeKey'] if nr else 'NEW'
+        # New task — atomically claim the next UniqueID in the SAME connection/transaction
+        # to avoid race conditions when multiple new tasks are saved back-to-back.
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                nr = conn.execute(
+                    "SELECT RangeKey,LastUsedNumber FROM NumberRange WHERE Client=? AND ProjectName=? AND Release=?",
+                    [client,project,release]
+                ).fetchone()
+                next_id = (nr['LastUsedNumber'] + 1) if nr else 1
+                range_key = nr['RangeKey'] if nr else None
 
-        conn.execute("""
-            INSERT INTO Tasks(Client,ProjectName,Release,UniqueID,WBS,TaskDesc,Duration,
-            StartDateTime,FinishDateTime,PerComplete,ResourceName,TeamName,
-            Predecessor,Successors,Notes,WorkCalendarOverride,ScheduleType)
-            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, [client,project,release,next_id,d.get('wbs',''),
-              d.get('taskDesc'),d.get('duration',0),d.get('start'),d.get('finish'),
-              d.get('pctComplete',0),d.get('resource'),d.get('team'),
-              d.get('predecessor'),d.get('successors'),d.get('notes'),
-              d.get('wcOverride') or None, d.get('scheduleType','Auto')])
+                if range_key:
+                    # Atomic claim: UPDATE first, conditioned on the value we just read.
+                    # If 0 rows affected, someone else claimed it first - retry.
+                    cur = conn.execute(
+                        "UPDATE NumberRange SET LastUsedNumber=? WHERE RangeKey=? AND LastUsedNumber=?",
+                        [next_id, range_key, next_id - 1]
+                    )
+                    if cur.rowcount == 0:
+                        continue  # someone else updated it concurrently - retry with fresh read
+                else:
+                    # No NumberRange row exists yet for this project - just proceed with next_id=1
+                    pass
 
-        conn.execute(
-            "UPDATE NumberRange SET LastUsedNumber=? WHERE RangeKey=?",
-            [next_id, range_key]
-        )
-        task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-        d['taskId'] = task_id
+                conn.execute("""
+                    INSERT INTO Tasks(Client,ProjectName,Release,UniqueID,WBS,TaskDesc,Duration,
+                    StartDateTime,FinishDateTime,PerComplete,ResourceName,TeamName,
+                    Predecessor,Successors,Notes,WorkCalendarOverride,ScheduleType)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """, [client,project,release,next_id,d.get('wbs',''),
+                      d.get('taskDesc'),d.get('duration',0),d.get('start'),d.get('finish'),
+                      d.get('pctComplete',0),d.get('resource'),d.get('team'),
+                      d.get('predecessor'),d.get('successors'),d.get('notes'),
+                      d.get('wcOverride') or None, d.get('scheduleType','Auto')])
 
-    conn.commit()
+                task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+                d['taskId'] = task_id
+                conn.commit()
+                conn.close()
+                break
+            except sqlite3.IntegrityError:
+                conn.rollback()
+                if attempt == max_retries - 1:
+                    conn.close()
+                    return jsonify({'ok': False, 'error': 'Could not assign a unique Task ID after several attempts. Please try saving again.'}), 500
+                continue
+
     return jsonify({'ok': True, 'taskId': d.get('taskId'), 'finish': d.get('finish')})
 
 @admin_bp.route('/api/tasks/delete', methods=['POST'])
