@@ -587,8 +587,31 @@ def tasks_save():
                     "SELECT RangeKey,LastUsedNumber FROM NumberRange WHERE Client=? AND ProjectName=? AND Release=?",
                     [client,project,release]
                 ).fetchone()
-                next_id = (nr['LastUsedNumber'] + 1) if nr else 1
-                range_key = nr['RangeKey'] if nr else None
+
+                if not nr:
+                    # No NumberRange row yet — initialize it from the real max UniqueID
+                    # already in Tasks (not hardcoded 1), so we don't collide with
+                    # existing rows on every retry.
+                    max_row = conn.execute(
+                        "SELECT MAX(UniqueID) as maxid FROM Tasks WHERE Client=? AND ProjectName=? AND Release=?",
+                        [client,project,release]
+                    ).fetchone()
+                    start_id = max_row['maxid'] or 0
+                    range_key = f"{client}|{project}|{release}"
+                    try:
+                        conn.execute(
+                            "INSERT INTO NumberRange(RangeKey,Client,ProjectName,Release,LastUsedNumber) VALUES(?,?,?,?,?)",
+                            [range_key, client, project, release, start_id]
+                        )
+                    except sqlite3.IntegrityError:
+                        pass  # someone else created it concurrently — fall through and re-read
+                    nr = conn.execute(
+                        "SELECT RangeKey,LastUsedNumber FROM NumberRange WHERE Client=? AND ProjectName=? AND Release=?",
+                        [client,project,release]
+                    ).fetchone()
+
+                next_id = nr['LastUsedNumber'] + 1
+                range_key = nr['RangeKey']
 
                 if range_key:
                     # Atomic claim: UPDATE first, conditioned on the value we just read.
