@@ -170,6 +170,12 @@ def tasks_import():
                                 start_dt_str = None
                         else:
                             row_error = f"Row {row_num}: has predecessor but no resource assigned — cannot determine calendar."
+                    # Translate row-position predecessor numbers to stable TaskIDs
+                    # now that we know each referenced row's real TaskID.
+                    predecessor = ','.join(
+                        str(inserted_tasks[pn - 1]['taskId'])
+                        for pn in pred_nums if 1 <= pn <= len(inserted_tasks)
+                    )
                 else:
                     row_error = f"Row {row_num}: predecessor '{predecessor}' is not a valid row number."
             else:
@@ -492,6 +498,18 @@ def tasks_list():
     """, [client,project,release]).fetchall()
 
     wbs_list = [str(r['WBS']) for r in rows]
+    taskid_to_rownum = {r['TaskID']: i + 1 for i, r in enumerate(rows)}
+
+    def to_rownums(ref_str):
+        if not ref_str:
+            return ''
+        out = []
+        for part in ref_str.split(','):
+            part = part.strip()
+            if part.isdigit() and int(part) in taskid_to_rownum:
+                out.append(str(taskid_to_rownum[int(part)]))
+        return ','.join(out)
+
     tasks = []
     for i, r in enumerate(rows):
         wbs    = str(r['WBS']) if r['WBS'] else ''
@@ -510,8 +528,8 @@ def tasks_list():
             'pctComplete':         r['PerComplete'] or 0,
             'resource':            r['ResourceName'] or '',
             'team':                r['TeamName'] or '',
-            'predecessor':         r['Predecessor'] or '',
-            'successors':          r['Successors'] or '',
+            'predecessor':         to_rownums(r['Predecessor']),
+            'successors':          to_rownums(r['Successors']),
             'notes':               r['Notes'] or '',
             'wcOverride':          r['WorkCalendarOverride'] or '',
             'scheduleType':        r['ScheduleType'] or 'Auto',
@@ -564,6 +582,28 @@ def tasks_save():
     project = d['project']
     release = d['release']
 
+    # UI sends Predecessor/Successors as friendly row numbers (matching the
+    # rowNum shown in tasks/list) — translate to stable TaskIDs before storing,
+    # so later inserts/reorders never invalidate the reference.
+    rows_for_map = conn.execute(
+        "SELECT TaskID FROM Tasks WHERE Client=? AND ProjectName=? AND Release=? ORDER BY TaskID",
+        [client, project, release]
+    ).fetchall()
+    rownum_to_taskid = {i + 1: r['TaskID'] for i, r in enumerate(rows_for_map)}
+
+    def to_taskids(ref_str):
+        if not ref_str:
+            return ''
+        out = []
+        for part in str(ref_str).split(','):
+            part = part.strip()
+            if part.isdigit() and int(part) in rownum_to_taskid:
+                out.append(str(rownum_to_taskid[int(part)]))
+        return ','.join(out)
+
+    predecessor_db = to_taskids(d.get('predecessor'))
+    successors_db  = to_taskids(d.get('successors'))
+
     if d.get('taskId'):
         conn.execute("""
             UPDATE Tasks SET TaskDesc=?,Duration=?,StartDateTime=?,FinishDateTime=?,
@@ -572,7 +612,7 @@ def tasks_save():
             WHERE TaskID=?
         """, [d.get('taskDesc'),d.get('duration'),d.get('start'),d.get('finish'),
               d.get('pctComplete',0),d.get('resource'),d.get('team'),
-              d.get('predecessor'),d.get('successors'),d.get('notes'),
+              predecessor_db,successors_db,d.get('notes'),
               d.get('wcOverride') or None, d.get('scheduleType','Auto'),
               d['taskId']])
         conn.commit()
@@ -634,7 +674,7 @@ def tasks_save():
                 """, [client,project,release,next_id,d.get('wbs',''),
                       d.get('taskDesc'),d.get('duration',0),d.get('start'),d.get('finish'),
                       d.get('pctComplete',0),d.get('resource'),d.get('team'),
-                      d.get('predecessor'),d.get('successors'),d.get('notes'),
+                      predecessor_db,successors_db,d.get('notes'),
                       d.get('wcOverride') or None, d.get('scheduleType','Auto')])
 
                 task_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
