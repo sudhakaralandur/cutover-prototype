@@ -43,6 +43,16 @@ def get_tasks():
         ORDER BY TeamName""", [client,project,release]).fetchall()
     conn.close()
     wbs_set = [str(r['WBS']) for r in rows]
+    taskid_to_rownum = {r['TaskID']: i + 1 for i, r in enumerate(rows)}
+    def to_rownums(ref_str):
+        if not ref_str:
+            return ''
+        out = []
+        for part in str(ref_str).split(','):
+            part = part.strip()
+            if part.isdigit() and int(part) in taskid_to_rownum:
+                out.append(str(taskid_to_rownum[int(part)]))
+        return ','.join(out)
     tasks = []
     for r in rows:
         wbs   = str(r['WBS']) if r['WBS'] else ''
@@ -52,8 +62,8 @@ def get_tasks():
             'isHeader':is_hdr,'taskDesc':r['TaskDesc'] or '','duration':r['Duration'] or 0,
             'start':fmt_dt(r['StartDateTime']),'finish':fmt_dt(r['FinishDateTime']),
             'pctComplete':r['PerComplete'] or 0,'resource':r['ResourceName'] or '',
-            'team':r['TeamName'] or '','predecessor':r['Predecessor'] or '',
-            'successors':r['Successors'] or '','notes':r['Notes'] or '',
+            'team':r['TeamName'] or '','predecessor':to_rownums(r['Predecessor']),
+            'successors':to_rownums(r['Successors']),'notes':r['Notes'] or '',
             'blStart':fmt_dt(r['BaselineStartDateTime']),'blFinish':fmt_dt(r['BaselineFinishDateTime'])})
     return jsonify({'tasks':tasks,'teams':[r['TeamName'] for r in teams]})
 
