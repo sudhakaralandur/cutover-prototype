@@ -10,6 +10,18 @@ def get_db():
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
+def wbs_sort_key(wbs):
+    """Natural sort for dot-separated WBS strings, e.g. '2.2' before '2.10'."""
+    if not wbs:
+        return (999999,)
+    parts = []
+    for p in str(wbs).split('.'):
+        try:
+            parts.append(int(p))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
 # ── Register admin blueprint ──
 from admin import admin_bp
 app.register_blueprint(admin_bp)
@@ -43,7 +55,8 @@ def get_tasks():
         ORDER BY TeamName""", [client,project,release]).fetchall()
     conn.close()
     wbs_set = [str(r['WBS']) for r in rows]
-    taskid_to_rownum = {r['TaskID']: i + 1 for i, r in enumerate(rows)}
+    rows_wbs_order = sorted(rows, key=lambda r: wbs_sort_key(r['WBS']))
+    taskid_to_rownum = {r['TaskID']: i + 1 for i, r in enumerate(rows_wbs_order)}
     def to_rownums(ref_str):
         if not ref_str:
             return ''
@@ -54,7 +67,7 @@ def get_tasks():
                 out.append(str(taskid_to_rownum[int(part)]))
         return ','.join(out)
     tasks = []
-    for r in rows:
+    for r in rows_wbs_order:
         wbs   = str(r['WBS']) if r['WBS'] else ''
         depth = wbs.count('.')
         is_hdr = any(w != wbs and w.startswith(wbs+'.') for w in wbs_set)
