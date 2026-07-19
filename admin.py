@@ -11,6 +11,18 @@ def db():
     conn.execute("PRAGMA busy_timeout = 8000")
     return conn
 
+def wbs_sort_key(wbs):
+    """Natural sort for dot-separated WBS strings, e.g. '2.2' before '2.10'."""
+    if not wbs:
+        return (999999,)
+    parts = []
+    for p in str(wbs).split('.'):
+        try:
+            parts.append(int(p))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
 @admin_bp.errorhandler(Exception)
 def handle_admin_api_error(e):
     """Ensure every /admin/api/* route returns JSON on unhandled errors instead of an HTML error page."""
@@ -498,7 +510,8 @@ def tasks_list():
     """, [client,project,release]).fetchall()
 
     wbs_list = [str(r['WBS']) for r in rows]
-    taskid_to_rownum = {r['TaskID']: i + 1 for i, r in enumerate(rows)}
+    rows_wbs_order = sorted(rows, key=lambda r: wbs_sort_key(r['WBS']))
+    taskid_to_rownum = {r['TaskID']: i + 1 for i, r in enumerate(rows_wbs_order)}
 
     def to_rownums(ref_str):
         if not ref_str:
@@ -511,13 +524,13 @@ def tasks_list():
         return ','.join(out)
 
     tasks = []
-    for i, r in enumerate(rows):
+    for r in rows_wbs_order:
         wbs    = str(r['WBS']) if r['WBS'] else ''
         is_hdr = any(w != wbs and w.startswith(wbs+'.') for w in wbs_list)
         tasks.append({
             'taskId':              r['TaskID'],
             'uniqueId':            r['UniqueID'],
-            'rowNum':              i + 1,
+            'rowNum':              taskid_to_rownum[r['TaskID']],
             'wbs':                 wbs,
             'depth':               wbs.count('.'),
             'isHeader':            is_hdr,
@@ -586,10 +599,11 @@ def tasks_save():
     # rowNum shown in tasks/list) — translate to stable TaskIDs before storing,
     # so later inserts/reorders never invalidate the reference.
     rows_for_map = conn.execute(
-        "SELECT TaskID FROM Tasks WHERE Client=? AND ProjectName=? AND Release=? ORDER BY TaskID",
+        "SELECT TaskID, WBS FROM Tasks WHERE Client=? AND ProjectName=? AND Release=?",
         [client, project, release]
     ).fetchall()
-    rownum_to_taskid = {i + 1: r['TaskID'] for i, r in enumerate(rows_for_map)}
+    rows_for_map_sorted = sorted(rows_for_map, key=lambda r: wbs_sort_key(r['WBS']))
+    rownum_to_taskid = {i + 1: r['TaskID'] for i, r in enumerate(rows_for_map_sorted)}
 
     def to_taskids(ref_str):
         if not ref_str:
