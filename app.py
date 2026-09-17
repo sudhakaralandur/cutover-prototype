@@ -88,7 +88,7 @@ def fmt_dt(val):
     except: return str(val)
 
 
-@app.route('/admin')
+@app.route('/admin', strict_slashes=False)
 def admin():
     return render_template('admin.html')
 
