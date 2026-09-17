@@ -3,6 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Resolves all relative URLs (including the fetch below) against wherever this
+     page was actually loaded from - works both at the app's own root (direct LAN
+     access) and when mounted under a subpath (e.g. Tailscale Funnel's --set-path
+     /cutover, which strips the /cutover prefix before forwarding to this app).
+     Requires the page to be accessed with a trailing slash on the subpath, e.g.
+     https://host/cutover/ - without the trailing slash the browser doesn't know
+     "cutover" is a directory and relative URLs resolve one level too high. -->
+<base href="./">
 <title>Cutover Plan Viewer</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -239,7 +247,7 @@ function loadTasks() {
   document.getElementById('taskBody').innerHTML =
     '<tr class="msg-row"><td colspan="10">Loading...</td></tr>';
 
-  fetch(`/api/tasks?client=${enc(client)}&project=${enc(project)}&release=${enc(release)}&team=${enc(team)}&search=${enc(search)}`)
+  fetch(`api/tasks?client=${enc(client)}&project=${enc(project)}&release=${enc(release)}&team=${enc(team)}&search=${enc(search)}`)
     .then(r => r.json())
     .then(data => {
       allTasks = data.tasks;
